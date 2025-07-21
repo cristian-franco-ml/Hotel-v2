@@ -4,11 +4,18 @@ import Skeleton from '../ui/Skeleton';
 interface EventCalendarProps {
   placeholder?: boolean;
 }
+// Define type for event
+interface CalendarEvent {
+  id: number;
+  name: string;
+  date: string;
+  impact: 'alto' | 'medio' | 'bajo';
+}
 const EventCalendar: React.FC<EventCalendarProps> = ({
   placeholder = false
 }) => {
   // Placeholder events with impact levels
-  const events = [{
+  const events: CalendarEvent[] = [{
     id: 1,
     name: 'Concierto Shakira',
     date: '2024-07-15',
@@ -29,7 +36,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
     date: '2024-07-25',
     impact: 'bajo'
   }];
-  const getImpactColor = impact => {
+  const getImpactColor = (impact: CalendarEvent['impact']): string => {
     switch (impact) {
       case 'alto':
         return 'bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-300';
@@ -49,7 +56,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
             Eventos con Impacto en Demanda
           </h3>
           <button className="ml-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <HelpCircle size={14} title="Eventos que afectan la demanda hotelera en la zona" />
+            <HelpCircle size={14} />
           </button>
         </div>
       </div>
@@ -59,7 +66,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
           <Skeleton height="h-16" className="rounded-lg" />
           <Skeleton height="h-16" className="rounded-lg" />
         </div> : <div className="space-y-3">
-          {events.map(event => <div key={event.id} className="flex items-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          {events.map((event: CalendarEvent) => <div key={event.id} className="flex items-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
               <div className="flex-shrink-0 mr-3">
                 <div className="w-10 h-10 flex flex-col items-center justify-center bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
                   <span className="text-xs font-medium text-gray-600 dark:text-gray-400">

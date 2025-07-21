@@ -13,6 +13,23 @@ import SettingsPanel from './navigation/SettingsPanel';
 import HelpPanel from './navigation/HelpPanel';
 import EmptyState from './ui/EmptyState';
 import { useLanguage } from '../contexts/LanguageContext';
+// Types for Notification and Bookmark
+interface Notification {
+  id: number;
+  type: string;
+  title: string;
+  message: string;
+  time: string;
+  read: boolean;
+}
+interface Bookmark {
+  id: number;
+  type: string;
+  title: string;
+  description: string;
+  path: string;
+  pinned: boolean;
+}
 const Navigation = () => {
   const location = useLocation();
   const currentPath = location.pathname;
@@ -62,7 +79,7 @@ const Navigation = () => {
   const [activeHelpTab, setActiveHelpTab] = useState('faq');
   const [isBookmarkDrawerOpen, setIsBookmarkDrawerOpen] = useState(false);
   // Notifications data
-  const [unreadNotifications, setUnreadNotifications] = useState([{
+  const [unreadNotifications, setUnreadNotifications] = useState<Notification[]>([{
     id: 1,
     type: 'alert',
     title: 'Alerta de demanda alta',
@@ -77,7 +94,7 @@ const Navigation = () => {
     time: '30 minutos atrás',
     read: false
   }]);
-  const [readNotifications, setReadNotifications] = useState([{
+  const [readNotifications, setReadNotifications] = useState<Notification[]>([{
     id: 3,
     type: 'success',
     title: 'Sincronización completada',
@@ -95,7 +112,7 @@ const Navigation = () => {
   // Recent searches
   const [recentSearches, setRecentSearches] = useState(['Hotel Lucerna', 'Estrategias fin de semana', 'Precios temporada alta', 'Comparativa competencia']);
   // Bookmarks data
-  const [pinnedBookmarks, setPinnedBookmarks] = useState([{
+  const [pinnedBookmarks, setPinnedBookmarks] = useState<Bookmark[]>([{
     id: 1,
     type: 'hotel',
     title: 'Hotel Lucerna',
@@ -110,7 +127,7 @@ const Navigation = () => {
     path: '/rendimiento',
     pinned: true
   }]);
-  const [bookmarks, setBookmarks] = useState([{
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([{
     id: 3,
     type: 'strategy',
     title: 'Estrategia Eventos',
@@ -137,7 +154,7 @@ const Navigation = () => {
     avatar: 'https://randomuser.me/api/portraits/men/32.jpg'
   };
   // Toggle panel function
-  const togglePanel = panel => {
+  const togglePanel = (panel: any) => {
     setActivePanel(activePanel === panel ? null : panel);
   };
   // Close panel function
@@ -150,7 +167,7 @@ const Navigation = () => {
     setUnreadNotifications([]);
   };
   // Toggle bookmark pin status
-  const toggleBookmarkPin = id => {
+  const toggleBookmarkPin = (id: number) => {
     const allBookmarks = [...pinnedBookmarks, ...bookmarks];
     const updatedBookmarks = allBookmarks.map(bookmark => {
       if (bookmark.id === id) {
@@ -166,7 +183,7 @@ const Navigation = () => {
   };
   // Keyboard shortcut for search
   useEffect(() => {
-    const handleKeyDown = e => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === '/' && !isSearchOpen) {
         e.preventDefault();
         setIsSearchOpen(true);
@@ -515,11 +532,15 @@ const Navigation = () => {
     </header>;
 };
 // Notification Item Component
+interface NotificationItemProps {
+  notification: Notification;
+  onClick?: () => void;
+}
 const NotificationItem = ({
   notification,
   onClick
-}) => {
-  const getIconByType = type => {
+}: NotificationItemProps) => {
+  const getIconByType = (type: string) => {
     switch (type) {
       case 'alert':
         return <AlertCircle size={16} className="text-amber-500 dark:text-amber-400" />;
@@ -552,11 +573,15 @@ const NotificationItem = ({
     </div>;
 };
 // Bookmark Item Component
+interface BookmarkItemProps {
+  bookmark: Bookmark;
+  onTogglePin: () => void;
+}
 const BookmarkItem = ({
   bookmark,
   onTogglePin
-}) => {
-  const getIconByType = type => {
+}: BookmarkItemProps) => {
+  const getIconByType = (type: string) => {
     switch (type) {
       case 'hotel':
         return <User size={16} className="text-blue-500 dark:text-blue-400" />;
@@ -591,7 +616,12 @@ const BookmarkItem = ({
       </button>
     </div>;
 };
-const NavItem = ({
+interface NavItemProps {
+  children: React.ReactNode;
+  active?: boolean;
+  to: string;
+}
+const NavItem: React.FC<NavItemProps> = ({
   children,
   active = false,
   to

@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowUp, ArrowDown, Clock, DollarSign, Zap, Clock3 } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 type KPICardProps = {
   title: string;
   value: string;
@@ -16,6 +17,9 @@ const KPICard: React.FC<KPICardProps> = ({
   icon,
   suffix
 }) => {
+  const {
+    t
+  } = useLanguage();
   const getIcon = () => {
     switch (icon) {
       case 'adjustments':

@@ -1,6 +1,10 @@
 import React from 'react';
 import { Zap, ArrowUp, ArrowDown } from 'lucide-react';
+import { useLanguage } from '../../contexts/LanguageContext';
 const RecentActions = () => {
+  const {
+    t
+  } = useLanguage();
   const actions = [{
     time: '10:45 a.m.',
     action: 'increase',
@@ -24,11 +28,11 @@ const RecentActions = () => {
       <div className="flex items-center mb-4">
         <Zap size={18} className="text-amber-500 mr-2" />
         <h3 className="font-medium text-gray-800 dark:text-white">
-          Acciones Automáticas Recientes
+          {t('recent_automatic_actions')}
         </h3>
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Últimos ajustes realizados por el sistema de automatización
+        {t('last_auto_adjustments')}
       </p>
       <div className="space-y-4">
         {actions.map((action, index) => <div key={index} className="flex items-start justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
@@ -53,6 +57,9 @@ const RecentActions = () => {
             </div>
           </div>)}
       </div>
+      <button className="mt-4 w-full text-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium">
+        {t('view_all_actions')}
+      </button>
     </div>;
 };
 export default RecentActions;

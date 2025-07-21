@@ -2,7 +2,7 @@ import React from 'react';
 import { TrendingUp, TrendingDown, CheckCircle, BarChart2 } from 'lucide-react';
 import Skeleton from '../ui/Skeleton';
 const PerformanceSummary = () => {
-  const loading = true; // In a real app, this would be based on data loading state
+  const loading = false; // TODO: Set loading state based on Supabase fetch
   return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
       {/* Accuracy Card */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-5 border border-gray-100 dark:border-gray-700 transition-colors duration-300">

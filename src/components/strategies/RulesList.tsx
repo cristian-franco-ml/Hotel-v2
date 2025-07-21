@@ -2,39 +2,7 @@ import React from 'react';
 import { Tag, Calendar, DollarSign, BarChart2, AlertTriangle, Plus } from 'lucide-react';
 const RulesList = () => {
   // Sample rules data
-  const rules = [{
-    id: 1,
-    name: 'Incremento Fin de Semana',
-    status: 'active',
-    impact: '+$4,320',
-    type: 'temporal',
-    description: 'Incrementa precios 15% durante fines de semana',
-    lastApplied: '2 horas atrás'
-  }, {
-    id: 2,
-    name: 'Evento Gastronómico',
-    status: 'active',
-    impact: '+$7,850',
-    type: 'evento',
-    description: 'Ajuste por festival gastronómico local (15-20 Mayo)',
-    lastApplied: '5 horas atrás'
-  }, {
-    id: 3,
-    name: 'Descuento Mid-Week',
-    status: 'active',
-    impact: '+$3,070',
-    type: 'temporal',
-    description: 'Reducción de precios entre martes y jueves',
-    lastApplied: '1 día atrás'
-  }, {
-    id: 4,
-    name: 'Regla Experimental',
-    status: 'draft',
-    impact: '~$2,500',
-    type: 'demanda',
-    description: 'Ajuste basado en patrones de demanda históricos',
-    lastApplied: 'Nunca aplicada'
-  }];
+  const rules = []; // TODO: Fetch from Supabase if rules are stored there
   // Empty state if no rules
   if (rules.length === 0) {
     return <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8 text-center border border-gray-100 dark:border-gray-700">

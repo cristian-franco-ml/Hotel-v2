@@ -15,27 +15,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
   placeholder = false
 }) => {
   // Placeholder events with impact levels
-  const events: CalendarEvent[] = [{
-    id: 1,
-    name: 'Concierto Shakira',
-    date: '2024-07-15',
-    impact: 'alto'
-  }, {
-    id: 2,
-    name: 'Feria Comercial',
-    date: '2024-07-18',
-    impact: 'medio'
-  }, {
-    id: 3,
-    name: 'Congreso Médico',
-    date: '2024-07-22',
-    impact: 'alto'
-  }, {
-    id: 4,
-    name: 'Festival Gastronómico',
-    date: '2024-07-25',
-    impact: 'bajo'
-  }];
+  const events: CalendarEvent[] = []; // TODO: Fetch from Supabase events
   const getImpactColor = (impact: CalendarEvent['impact']): string => {
     switch (impact) {
       case 'alto':

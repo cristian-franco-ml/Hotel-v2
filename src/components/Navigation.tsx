@@ -79,80 +79,19 @@ const Navigation = () => {
   const [activeHelpTab, setActiveHelpTab] = useState('faq');
   const [isBookmarkDrawerOpen, setIsBookmarkDrawerOpen] = useState(false);
   // Notifications data
-  const [unreadNotifications, setUnreadNotifications] = useState<Notification[]>([{
-    id: 1,
-    type: 'alert',
-    title: 'Alerta de demanda alta',
-    message: 'Se detectó un incremento súbito de demanda para Hotel Lucerna',
-    time: '10 minutos atrás',
-    read: false
-  }, {
-    id: 2,
-    type: 'price',
-    title: 'Ajuste de precio recomendado',
-    message: 'Se recomienda ajustar precios para el fin de semana',
-    time: '30 minutos atrás',
-    read: false
-  }]);
-  const [readNotifications, setReadNotifications] = useState<Notification[]>([{
-    id: 3,
-    type: 'success',
-    title: 'Sincronización completada',
-    message: 'Datos de PMS sincronizados correctamente',
-    time: '1 hora atrás',
-    read: true
-  }, {
-    id: 4,
-    type: 'info',
-    title: 'Nuevo reporte disponible',
-    message: 'El reporte mensual de rendimiento está listo para revisión',
-    time: '3 horas atrás',
-    read: true
-  }]);
+  const [unreadNotifications, setUnreadNotifications] = useState<Notification[]>([]); // TODO: Fetch from Supabase
+  const [readNotifications, setReadNotifications] = useState<Notification[]>([]); // TODO: Fetch from Supabase
   // Recent searches
-  const [recentSearches, setRecentSearches] = useState(['Hotel Lucerna', 'Estrategias fin de semana', 'Precios temporada alta', 'Comparativa competencia']);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]); // TODO: Fetch from Supabase or user context
   // Bookmarks data
-  const [pinnedBookmarks, setPinnedBookmarks] = useState<Bookmark[]>([{
-    id: 1,
-    type: 'hotel',
-    title: 'Hotel Lucerna',
-    description: 'Hotel en Tijuana, 4 estrellas',
-    path: '/hotels',
-    pinned: true
-  }, {
-    id: 2,
-    type: 'report',
-    title: 'Reporte Q2 2024',
-    description: 'Análisis de rendimiento trimestral',
-    path: '/rendimiento',
-    pinned: true
-  }]);
-  const [bookmarks, setBookmarks] = useState<Bookmark[]>([{
-    id: 3,
-    type: 'strategy',
-    title: 'Estrategia Eventos',
-    description: 'Ajustes para eventos especiales',
-    path: '/estrategias',
-    pinned: false
-  }, {
-    id: 4,
-    type: 'calendar',
-    title: 'Temporada Alta 2024',
-    description: 'Planificación para temporada alta',
-    path: '/precios',
-    pinned: false
-  }]);
+  const [pinnedBookmarks, setPinnedBookmarks] = useState<Bookmark[]>([]); // TODO: Fetch from Supabase
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]); // TODO: Fetch from Supabase
   // Bookmark search query
   const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState('');
   // Filter bookmarks based on search query
   const filteredBookmarks = bookmarkSearchQuery ? [...pinnedBookmarks, ...bookmarks].filter(b => b.title.toLowerCase().includes(bookmarkSearchQuery.toLowerCase()) || b.description.toLowerCase().includes(bookmarkSearchQuery.toLowerCase())) : [...pinnedBookmarks, ...bookmarks];
   // User data
-  const userData = {
-    name: 'Carlos Rodriguez',
-    email: 'carlos.rodriguez@arkusnexus.com',
-    role: 'Administrador',
-    avatar: 'https://randomuser.me/api/portraits/men/32.jpg'
-  };
+  const userData = null; // TODO: Fetch from Supabase or auth provider
   // Toggle panel function
   const togglePanel = (panel: any) => {
     setActivePanel(activePanel === panel ? null : panel);
@@ -490,13 +429,13 @@ const Navigation = () => {
       }} role="menu" aria-modal="true" id="profile-menu">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center">
-              <img src={userData.avatar} alt="Avatar" className="h-10 w-10 rounded-full mr-3" />
+              <img src={userData?.avatar} alt="Avatar" className="h-10 w-10 rounded-full mr-3" />
               <div>
                 <div className="font-medium text-gray-800 dark:text-white" data-bind="userName">
-                  {userData.name}
+                  {userData?.name}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {userData.role}
+                  {userData?.role}
                 </div>
               </div>
             </div>

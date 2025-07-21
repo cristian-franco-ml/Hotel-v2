@@ -7,39 +7,11 @@ const HelpPanel = () => {
   } = useLanguage();
   const [activeTab, setActiveTab] = useState('faq');
   // FAQ data
-  const faqItems = [{
-    question: t('faq_competition_question'),
-    answer: t('faq_competition_answer')
-  }, {
-    question: t('faq_data_update_question'),
-    answer: t('faq_data_update_answer')
-  }, {
-    question: t('faq_rules_question'),
-    answer: t('faq_rules_answer')
-  }];
+  const faqItems = []; // TODO: Fetch from Supabase or static config
   // Support contact info
-  const supportInfo = {
-    email: 'soporte@arkusnexus.com',
-    phone: '+52 (664) 123-4567',
-    hours: 'Lunes a Viernes, 9:00 - 18:00'
-  };
+  const supportInfo = null; // TODO: Fetch from Supabase or static config
   // Keyboard shortcuts
-  const shortcuts = [{
-    key: '/',
-    action: t('open_global_search')
-  }, {
-    key: 'ESC',
-    action: t('close_dialogs')
-  }, {
-    key: 'Ctrl+B',
-    action: t('open_bookmarks')
-  }, {
-    key: 'Ctrl+H',
-    action: t('open_help_center')
-  }, {
-    key: 'Ctrl+D',
-    action: t('toggle_theme')
-  }];
+  const shortcuts = []; // TODO: Fetch from Supabase or static config
   return <div>
       <div className="mb-6">
         <div className="flex border-b border-gray-200 dark:border-gray-700">
@@ -69,8 +41,8 @@ const HelpPanel = () => {
             <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               {t('email_contact')}
             </h4>
-            <a href={`mailto:${supportInfo.email}`} className="text-blue-600 dark:text-blue-400 hover:underline">
-              {supportInfo.email}
+            <a href={`mailto:${supportInfo?.email}`} className="text-blue-600 dark:text-blue-400 hover:underline">
+              {supportInfo?.email}
             </a>
           </div>
           <div>
@@ -78,7 +50,7 @@ const HelpPanel = () => {
               {t('support_phone')}
             </h4>
             <p className="text-gray-800 dark:text-gray-200">
-              {supportInfo.phone}
+              {supportInfo?.phone}
             </p>
           </div>
           <div>
@@ -89,7 +61,7 @@ const HelpPanel = () => {
               {t('start_live_chat')}
             </button>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              {t('service_available')} {supportInfo.hours}
+              {t('service_available')} {supportInfo?.hours}
             </p>
           </div>
         </div>}

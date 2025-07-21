@@ -3,7 +3,7 @@ import { Search, Clock } from 'lucide-react';
 import Skeleton from '../ui/Skeleton';
 const SearchPanel = () => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [recentSearches, setRecentSearches] = useState(['Hotel Lucerna', 'Estrategias fin de semana', 'Precios temporada alta', 'Comparativa competencia']);
+  const [recentSearches, setRecentSearches] = useState<string[]>([]); // TODO: Fetch from Supabase or user context
   const handleSearch = e => {
     e.preventDefault();
     if (searchQuery.trim()) {

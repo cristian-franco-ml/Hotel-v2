@@ -1,38 +1,86 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { GitCompare, HelpCircle } from 'lucide-react';
+import { supabase } from '../../supabaseClient';
+
+const parsePrice = (priceStr: string): number => {
+  if (!priceStr) return 0;
+  const num = priceStr.replace(/[^\d.]/g, '');
+  return parseFloat(num) || 0;
+};
+const getToday = () => {
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
 const CompetitorPriceComparison = () => {
-  // Placeholder data for competitor comparison
-  const competitors = [{
-    id: 1,
-    name: 'Hotel Lucerna (Nosotros)',
-    price: 2450,
-    change: '+5.2%',
-    isUs: true
-  }, {
-    id: 2,
-    name: 'Hotel Competidor A',
-    price: 2320,
-    change: '+2.1%',
-    isUs: false
-  }, {
-    id: 3,
-    name: 'Hotel Competidor B',
-    price: 2180,
-    change: '-1.5%',
-    isUs: false
-  }, {
-    id: 4,
-    name: 'Hotel Competidor C',
-    price: 2650,
-    change: '+3.8%',
-    isUs: false
-  }, {
-    id: 5,
-    name: 'Hotel Competidor D',
-    price: 2080,
-    change: '+0.5%',
-    isUs: false
-  }];
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<any[]>([]);
+  useEffect(() => {
+    async function fetchData() {
+      setLoading(true);
+      const today = getToday();
+      // DEBUG: fetch all records to inspect checkin_date
+      const { data: allOwnPrices } = await supabase
+        .from('hotel_usuario')
+        .select('*')
+        .limit(5);
+      console.log('allOwnPrices sample', allOwnPrices);
+      // Fetch our hotel prices for today (usar checkin_date)
+      const { data: ownPrices } = await supabase
+        .from('hotel_usuario')
+        .select('hotel_name, price')
+        .eq('checkin_date', today);
+      console.log('ownPrices', ownPrices);
+      // Fetch competitors
+      const { data: competitors } = await supabase.from('hoteles_parallel').select('*');
+      // Calculate our average price
+      let ourAvg = null;
+      if (ownPrices && ownPrices.length > 0) {
+        const prices = ownPrices.map(row => parsePrice(row.price));
+        console.log('parsed prices', prices);
+        const validPrices = prices.filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
+        if (validPrices.length > 0) {
+          ourAvg = validPrices.reduce((a, b) => a + b, 0) / validPrices.length;
+        }
+      }
+      // Prepare competitor rows
+      const competitorRows = (competitors || []).map(hotel => {
+        let avgPrice = null;
+        if (hotel.rooms_jsonb) {
+          try {
+            const rooms = typeof hotel.rooms_jsonb === 'string' ? JSON.parse(hotel.rooms_jsonb) : hotel.rooms_jsonb;
+            const todayRooms = rooms[today];
+            if (Array.isArray(todayRooms) && todayRooms.length > 0) {
+              const prices = todayRooms.map(r => parsePrice(r.price)).filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
+              if (prices.length > 0) {
+                avgPrice = prices.reduce((a, b) => a + b, 0) / prices.length;
+              }
+            }
+          } catch {}
+        }
+        return {
+          id: hotel.id,
+          name: hotel.nombre,
+          price: avgPrice,
+          isUs: false,
+        };
+      });
+      // Add our hotel as the first row
+      setRows([
+        {
+          id: 'us',
+          name: ownPrices && ownPrices.length > 0 ? ownPrices[0].hotel_name : 'Nuestro Hotel',
+          price: ourAvg,
+          isUs: true,
+        },
+        ...competitorRows
+      ]);
+      setLoading(false);
+    }
+    fetchData();
+  }, []);
   return <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-5 border border-gray-100 dark:border-gray-700">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
@@ -56,53 +104,37 @@ const CompetitorPriceComparison = () => {
                 Tarifa Actual
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Cambio 24h
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                Diferencia
+                Diferencia vs Nosotros
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {competitors.map(competitor => <tr key={competitor.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${competitor.isUs ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+            {loading ? <tr><td colSpan={3} className="text-center py-6 text-gray-500">Cargando...</td></tr> : rows.map((row, idx) => (
+              <tr key={row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${row.isUs ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <div className="flex items-center">
-                    <div className={`text-sm font-medium ${competitor.isUs ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}>
-                      {competitor.name}
+                    <div className={`text-sm font-medium ${row.isUs ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}>
+                      {row.name}
                     </div>
-                    {competitor.isUs && <span className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded-md">
-                        NOSOTROS
-                      </span>}
+                    {row.isUs && <span className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded-md">NOSOTROS</span>}
                   </div>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <div className={`text-sm ${competitor.isUs ? 'font-bold text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}>
-                    ${competitor.price}
+                  <div className={`text-sm ${row.isUs ? 'font-bold text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}>
+                    {row.price !== null && row.price !== undefined ? `$${row.price.toFixed(0)}` : 'N/A'}
                   </div>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
-                  <div className={`text-sm ${competitor.change.startsWith('+') ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {competitor.change}
-                  </div>
+                  {!row.isUs && rows[0].price !== null && row.price !== null && row.price !== undefined ? (
+                    <div className={`text-sm ${row.price < rows[0].price ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                      {row.price < rows[0].price ? `-$${(rows[0].price - row.price).toFixed(0)}` : `+$${(row.price - rows[0].price).toFixed(0)}`}
+                    </div>
+                  ) : null}
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap">
-                  {!competitor.isUs && <div className={`text-sm ${competitor.price < competitors[0].price ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
-                      {competitor.price < competitors[0].price ? `-$${competitors[0].price - competitor.price}` : `+$${competitor.price - competitors[0].price}`}
-                    </div>}
-                </td>
-              </tr>)}
+              </tr>
+            ))}
           </tbody>
         </table>
-      </div>
-      <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-        <div className="text-sm font-medium text-gray-800 dark:text-white mb-1">
-          Resumen de Posicionamiento
-        </div>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Tu hotel está posicionado como el 3º más caro de 15 hoteles en un
-          radio de 10km. El precio actual está 5.6% por encima del promedio del
-          mercado.
-        </p>
       </div>
     </div>;
 };

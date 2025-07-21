@@ -8,6 +8,7 @@ import { Hotel } from '../types/hotel';
 import DateRangeSelector from './ui/DateRangeSelector';
 import { FileDown, Map, List } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
+import Skeleton from './ui/Skeleton';
 const HotelsPage = () => {
   const {
     t
@@ -78,18 +79,15 @@ const HotelsPage = () => {
           <HotelFilters onSearch={handleSearch} />
         </div>
         {/* Hotels List or Map View */}
-        {viewMode === 'table' ? loading ? <div className="space-y-4">
-              {[1, 2, 3, 4].map(i => <Skeleton key={i} height="h-40" className="rounded-lg" />)}
-            </div> : hotels.length > 0 ? <HotelList /> : <EmptyState mensaje={t('no_competitors_match')} cta={{
-        label: t('update_data'),
-        onClick: () => setLoading(true)
-      }} /> : <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-100 dark:border-gray-700">
+        {viewMode === 'table' ? <HotelList /> : (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-100 dark:border-gray-700">
             <div className="h-96 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center">
               <p className="text-gray-500 dark:text-gray-400">
                 {t('loading_competitor_map')}
               </p>
             </div>
-          </div>}
+          </div>
+        )}
       </main>
     </div>;
 };

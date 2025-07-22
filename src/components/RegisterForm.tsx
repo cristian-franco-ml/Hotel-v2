@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 const RegisterForm: React.FC = () => {
   const [form, setForm] = useState({
@@ -16,9 +16,11 @@ const RegisterForm: React.FC = () => {
   const [hotelsLoading, setHotelsLoading] = useState(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lon: number } | null>(null);
+  const [hotelMetadata, setHotelMetadata] = useState<any>(null);
   const [hotelQuery, setHotelQuery] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
 
   // Solicita ubicación al cargar
   useEffect(() => {
@@ -38,7 +40,33 @@ const RegisterForm: React.FC = () => {
     );
   }, []);
 
-  // Eliminar useEffect que hace fetch a /api/amadeus-hotels y toda la lógica de autocompletado de hoteles relacionada con Amadeus
+  // Fetch hoteles de Amadeus al obtener coordenadas (sugerencias iniciales)
+  useEffect(() => {
+    const fetchInitialHotels = async () => {
+      if (!coords) return;
+      setHotelsLoading(true);
+      try {
+        const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/amadeus-hotels`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: coords.lat,
+            lng: coords.lon,
+            radius: 15
+          })
+        });
+        const data = await res.json();
+        setHotels(data.hotels || []);
+      } catch (err) {
+        setHotels([]);
+      }
+      setHotelsLoading(false);
+    };
+    fetchInitialHotels();
+  }, [coords]);
+
+  // Eliminar el useEffect que hace fetch a Amadeus al escribir (hotelQuery)
+  // Solo mantener el useEffect que hace la búsqueda inicial al obtener coords
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -51,28 +79,40 @@ const RegisterForm: React.FC = () => {
     setShowSuggestions(true);
   };
 
-  // Selecciona hotel de sugerencias
-  const handleSelectHotel = (name: string) => {
-    setForm({ ...form, hotel: name });
-    setHotelQuery(name);
+  // Selecciona hotel de sugerencias y guarda metadata
+  const handleSelectHotel = (hotelName: string) => {
+    const selected = hotels.find(h => h.name === hotelName);
+    setForm({ ...form, hotel: hotelName });
+    setHotelQuery(hotelName);
+    setHotelMetadata(selected || null);
     setShowSuggestions(false);
     inputRef.current?.blur();
   };
 
+  // Enviar metadata al backend
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setSuccess(null);
+    // Si no hay hotelMetadata, usar el nombre escrito por el usuario
+    const hotelNameToSend = hotelMetadata ? hotelMetadata.name : form.hotel;
     try {
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/auth-signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form)
+        body: JSON.stringify({ ...form, hotel: hotelNameToSend, hotel_metadata: hotelMetadata })
       });
       const data = await res.json();
-      if (res.ok) setSuccess('¡Registro exitoso! Revisa tu correo.');
-      else setError(data.error || 'Error en el registro');
+      if (res.ok) {
+        setSuccess('¡Registro exitoso!');
+        // Si hay sesión, guárdala y redirige
+        if (data.session && data.session.access_token) {
+          localStorage.setItem('session', JSON.stringify(data.session));
+          localStorage.setItem('user', JSON.stringify(data.user));
+          navigate('/');
+        }
+      } else setError(data.error || 'Error en el registro');
     } catch (err) {
       setError('Error de red o servidor');
     }
@@ -110,7 +150,7 @@ const RegisterForm: React.FC = () => {
             disabled={hotelsLoading}
             onFocus={() => setShowSuggestions(true)}
           />
-          {showSuggestions && hotelQuery && hotels.length > 0 && (
+          {showSuggestions && hotels.length > 0 && (
             <ul className="absolute z-10 bg-white dark:bg-gray-800 border w-full max-h-48 overflow-y-auto rounded shadow mt-1">
               {hotels.map((h, i) => (
                 <li
@@ -122,6 +162,11 @@ const RegisterForm: React.FC = () => {
                 </li>
               ))}
             </ul>
+          )}
+          {showSuggestions && !hotelsLoading && hotels.length === 0 && (
+            <div className="absolute z-10 bg-white dark:bg-gray-800 border w-full rounded shadow mt-1 px-3 py-2 text-gray-500 text-sm">
+              No se encontraron hoteles cercanos para tu ubicación.
+            </div>
           )}
         </div>
         {geoError && <div className="text-yellow-600 text-xs">{geoError}</div>}

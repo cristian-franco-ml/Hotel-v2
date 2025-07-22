@@ -2,6 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { GitCompare, HelpCircle } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
+
+
+
 const parsePrice = (priceStr: string): number => {
   if (!priceStr) return 0;
   const num = priceStr.replace(/[^\d.]/g, '');
@@ -17,6 +20,7 @@ const getToday = () => {
 const CompetitorPriceComparison = () => {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
+
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
@@ -81,6 +85,9 @@ const CompetitorPriceComparison = () => {
     }
     fetchData();
   }, []);
+
+ 
+
   return <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-5 border border-gray-100 dark:border-gray-700">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center">
@@ -136,6 +143,7 @@ const CompetitorPriceComparison = () => {
           </tbody>
         </table>
       </div>
+      
     </div>;
 };
 export default CompetitorPriceComparison;

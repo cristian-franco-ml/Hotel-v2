@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { GitCompare, HelpCircle } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 
-
-
+const MAX_COMPETITORS = 12;
 
 const parsePrice = (priceStr: string): number => {
   if (!priceStr) return 0;
@@ -20,6 +19,7 @@ const getToday = () => {
 const CompetitorPriceComparison = () => {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -30,20 +30,17 @@ const CompetitorPriceComparison = () => {
         .from('hotel_usuario')
         .select('*')
         .limit(5);
-      console.log('allOwnPrices sample', allOwnPrices);
       // Fetch our hotel prices for today (usar checkin_date)
       const { data: ownPrices } = await supabase
         .from('hotel_usuario')
         .select('hotel_name, price')
         .eq('checkin_date', today);
-      console.log('ownPrices', ownPrices);
       // Fetch competitors
       const { data: competitors } = await supabase.from('hoteles_parallel').select('*');
       // Calculate our average price
       let ourAvg = null;
       if (ownPrices && ownPrices.length > 0) {
         const prices = ownPrices.map(row => parsePrice(row.price));
-        console.log('parsed prices', prices);
         const validPrices = prices.filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
         if (validPrices.length > 0) {
           ourAvg = validPrices.reduce((a, b) => a + b, 0) / validPrices.length;
@@ -86,7 +83,8 @@ const CompetitorPriceComparison = () => {
     fetchData();
   }, []);
 
- 
+  const hasMore = rows.length > (MAX_COMPETITORS + 1); // +1 for 'us' row
+  const visibleRows = showAll ? rows : rows.slice(0, MAX_COMPETITORS + 1); // +1 for 'us' row
 
   return <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-5 border border-gray-100 dark:border-gray-700">
       <div className="flex items-center justify-between mb-4">
@@ -116,7 +114,7 @@ const CompetitorPriceComparison = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {loading ? <tr><td colSpan={3} className="text-center py-6 text-gray-500">Cargando...</td></tr> : rows.map((row, idx) => (
+            {loading ? <tr><td colSpan={3} className="text-center py-6 text-gray-500">Cargando...</td></tr> : visibleRows.map((row, idx) => (
               <tr key={row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${row.isUs ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <div className="flex items-center">
@@ -143,7 +141,14 @@ const CompetitorPriceComparison = () => {
           </tbody>
         </table>
       </div>
-      
+      {hasMore && (
+        <button
+          className="w-full mt-3 text-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"
+          onClick={() => setShowAll((prev) => !prev)}
+        >
+          {showAll ? 'Ver menos competidores' : 'Ver más competidores'}
+        </button>
+      )}
     </div>;
 };
 export default CompetitorPriceComparison;

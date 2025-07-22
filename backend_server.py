@@ -28,28 +28,18 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 @app.route('/run-scrape-hotels', methods=['POST'])
 def run_scrape_hotels():
-    print("Petición recibida en /run-scrape-hotels")
     data = request.get_json()
-    print("Después de get_json")
-    user_id = data.get('user_id') if data else None
-    print("Después de obtener user_id:", user_id)
+    user_id = data.get('user_id')
     if not user_id:
         return jsonify({'error': 'user_id requerido'}), 400
-    try:
-        # Ejecuta el script y pasa el user_id como argumento
-        print("try")
-        result = subprocess.run(
-           
-            ['python', 'python_scripts/scrape_hotels.py', user_id],
-            capture_output=True, text=True, check=True,
-            encoding='utf-8', errors='replace'
-        )
-        print("Antes de iniciar scraping")
-        print("Después de scraping")
-        return jsonify({'output': result.stdout})
-    except subprocess.CalledProcessError as e:
-        print("Error ejecutando el script:", e.stderr)
-        return jsonify({'error': 'Error ejecutando el script', 'details': e.stderr}), 500
+    # Ejecuta el script de scraping y pasa el user_id
+    result = subprocess.run(
+        ['python', 'python_scripts/scrape_hotels.py', user_id],
+        capture_output=True, text=True
+    )
+    if result.returncode != 0:
+        return jsonify({'error': result.stderr}), 500
+    return jsonify({'output': result.stdout}), 200
 
 @app.route('/run-scrapeo-geo', methods=['POST'])
 def run_scrapeo_geo():
@@ -203,6 +193,31 @@ def create_event():
         }
     )
     return jsonify(response.json()), response.status_code
+
+@app.route('/api/auth-signup', methods=['POST'])
+def auth_signup():
+    data = request.get_json()
+    email = data.get('email')
+    password = data.get('password')
+    name = data.get('name')
+    phone = data.get('phone')
+    hotel = data.get('hotel')
+    if not all([email, password, name, phone, hotel]):
+        return jsonify({'error': 'Faltan campos'}), 400
+
+    # Crea el usuario en Supabase Auth y guarda metadatos
+    result = supabase.auth.admin.create_user({
+        'email': email,
+        'password': password,
+        'user_metadata': {
+            'display_name': name,
+            'phone': phone,
+            'hotel': hotel
+        }
+    })
+    if result.get('error'):
+        return jsonify({'error': result['error']['message']}), 400
+    return jsonify({'success': True}), 200
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -436,41 +451,53 @@ def run_scrape_hotel_propio():
 
 @app.route('/run-all-scrapings', methods=['POST'])
 def run_all_scrapings():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    if not user_id:
+        return {'error': 'user_id requerido'}, 400
     try:
-        # Lista de scripts a ejecutar (ajusta los nombres según tus scripts reales)
+        # Obtener metadatos del usuario desde Supabase Auth
+        SUPABASE_URL = os.getenv("SUPABASE_URL")
+        SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+        headers = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}'
+        }
+        user_resp = requests.get(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
+        if user_resp.status_code != 200:
+            return {'error': 'No se pudo obtener el usuario de Supabase', 'details': user_resp.text}, 500
+        user_data = user_resp.json()
+        user_meta = user_data.get('user', {}).get('user_metadata', {})
+        hotel_name = user_meta.get('hotel_name') or user_meta.get('name') or ''
+        phone = user_meta.get('Phone') or user_meta.get('phone') or ''
+        # Puedes extraer más datos si lo necesitas
+        # Lista de scripts a ejecutar usando los datos del usuario
         scripts = [
-            'scrape_hotels.py',
-            'scrape_eventos.py',
-            'hotel_propio.py'
-            # Agrega aquí todos los scripts que quieras ejecutar
+            ['python', 'python_scripts/scrape_hotels.py', user_id],
+            ['python', 'python_scripts/scrape_eventos.py', hotel_name, '10', user_id],
+            ['python', 'python_scripts/scrape_hotels_parallel.py', user_id, hotel_name or 'Tijuana']
         ]
         processes = []
-        for script in scripts:
-            print(f"[INFO] Ejecutando {script} ...")
+        for script_args in scripts:
             p = subprocess.Popen(
-                ['python', f'python_scripts/{script}'],
+                script_args,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True
             )
-            processes.append((script, p))
+            processes.append((script_args, p))
         # Espera a que todos terminen y recoge la salida
         results = []
-        for script, p in processes:
+        for script_args, p in processes:
             stdout, stderr = p.communicate()
-            print(f"[INFO] {script} terminó con código {p.returncode}")
-            print(f"[STDOUT] {script}:\n{stdout}")
-            print(f"[STDERR] {script}:\n{stderr}")
             results.append({
-                'script': script,
+                'script': ' '.join(script_args),
                 'stdout': stdout,
                 'stderr': stderr,
                 'returncode': p.returncode
             })
-        print("[INFO] Todos los scripts han terminado.")
         return jsonify({'results': results}), 200
     except Exception as e:
-        print(f"[ERROR] {e}")
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':

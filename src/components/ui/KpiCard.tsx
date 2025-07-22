@@ -47,7 +47,7 @@ const KpiCard: React.FC<KpiCardProps> = ({
               <Skeleton height="h-8" width="w-24" className="mb-2" />
               <Skeleton height="h-4" width="w-32" />
             </div> : <>
-              <div className="text-3xl font-bold" data-bind={bindKey}>
+              <div className="text-3xl font-bold text-gray-900 dark:text-white" data-bind={bindKey}>
                 {value ? value : '—'}
                 {unidad && <span className="text-lg ml-1">{unidad}</span>}
               </div>

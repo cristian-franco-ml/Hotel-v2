@@ -9,6 +9,7 @@ import DateRangeSelector from './ui/DateRangeSelector';
 import { FileDown, Map, List } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import Skeleton from './ui/Skeleton';
+import { supabase } from '../supabaseClient';
 const HotelsPage = () => {
   const {
     t
@@ -18,6 +19,18 @@ const HotelsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'map'>('table');
   const [loading, setLoading] = useState(false);
+  React.useEffect(() => {
+    async function fetchHotels() {
+      setLoading(true);
+      const { data, error } = await supabase.from('hoteles_parallel').select('*');
+      if (!error && data) {
+        setHotels(data);
+        setFilteredHotels(data);
+      }
+      setLoading(false);
+    }
+    fetchHotels();
+  }, []);
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     if (!query) {
@@ -76,7 +89,7 @@ const HotelsPage = () => {
         </div>
         {/* Filters */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 mb-6 border border-gray-100 dark:border-gray-700 transition-colors duration-300">
-          <HotelFilters onSearch={handleSearch} />
+          <HotelFilters hotels={hotels} setFilteredHotels={setFilteredHotels} />
         </div>
         {/* Hotels List or Map View */}
         {viewMode === 'table' ? <HotelList /> : (

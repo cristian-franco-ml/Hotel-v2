@@ -1,114 +1,87 @@
 import React, { useState } from 'react';
 import { Search, Filter, ArrowUpDown, Wifi, Dumbbell, Waves, UtensilsCrossed, Car, PawPrint, Briefcase, Coffee, Martini, X, BoxIcon } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { Hotel } from '../../types/hotel';
 interface HotelFiltersProps {
-  onSearch: (query: string) => void;
+  hotels: Hotel[];
+  setFilteredHotels: React.Dispatch<React.SetStateAction<Hotel[]>>;
 }
-const HotelFilters: React.FC<HotelFiltersProps> = ({
-  onSearch
-}) => {
+const HotelFilters: React.FC<HotelFiltersProps> = ({ hotels, setFilteredHotels }) => {
   const {
     t
   } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
-  const [distanceFilter, setDistanceFilter] = useState('');
   const [priceFilter, setPriceFilter] = useState('');
   const [ratingFilter, setRatingFilter] = useState('');
-  const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
   const [activeFilters, setActiveFilters] = useState<{
     id: string;
     label: string;
     value: string;
   }[]>([]);
+  // Filtrado general
+  const applyFilters = (query = searchQuery, price = priceFilter, rating = ratingFilter) => {
+    let filtered = hotels;
+    if (query) {
+      filtered = filtered.filter(hotel =>
+        (hotel.name?.toLowerCase().includes(query.toLowerCase()) || hotel.location?.toLowerCase().includes(query.toLowerCase()))
+      );
+    }
+    if (price) {
+      if (price === '$1,000 - $2,000') filtered = filtered.filter(hotel => hotel.averageRate >= 1000 && hotel.averageRate < 2000);
+      if (price === '$2,000 - $3,000') filtered = filtered.filter(hotel => hotel.averageRate >= 2000 && hotel.averageRate < 3000);
+      if (price === '$3,000 - $4,000') filtered = filtered.filter(hotel => hotel.averageRate >= 3000 && hotel.averageRate < 4000);
+      if (price === '$4,000+') filtered = filtered.filter(hotel => hotel.averageRate >= 4000);
+    }
+    if (rating) {
+      filtered = filtered.filter(hotel => hotel.stars === Number(rating));
+    }
+    setFilteredHotels(filtered);
+  };
+
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     setSearchQuery(query);
-    onSearch(query);
-  };
-  const toggleAmenity = (amenity: string) => {
-    if (selectedAmenities.includes(amenity)) {
-      setSelectedAmenities(selectedAmenities.filter(a => a !== amenity));
-      setActiveFilters(activeFilters.filter(f => f.id !== `amenity-${amenity}`));
-    } else {
-      setSelectedAmenities([...selectedAmenities, amenity]);
-      setActiveFilters([...activeFilters, {
-        id: `amenity-${amenity}`,
-        label: t('amenity'),
-        value: getAmenityLabel(amenity)
-      }]);
-    }
-  };
-  const handleDistanceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setDistanceFilter(value);
-    if (value) {
-      // Remove existing distance filter if any
-      const updatedFilters = activeFilters.filter(f => f.id !== 'distance');
-      // Add new distance filter
-      setActiveFilters([...updatedFilters, {
-        id: 'distance',
-        label: t('distance'),
-        value: `${value} km`
-      }]);
-    } else {
-      // Remove distance filter
-      setActiveFilters(activeFilters.filter(f => f.id !== 'distance'));
-    }
+    applyFilters(query, priceFilter, ratingFilter);
   };
   const handlePriceChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setPriceFilter(value);
+    applyFilters(searchQuery, value, ratingFilter);
     if (value) {
-      // Remove existing price filter if any
       const updatedFilters = activeFilters.filter(f => f.id !== 'price');
-      // Add new price filter
-      setActiveFilters([...updatedFilters, {
-        id: 'price',
-        label: t('price'),
-        value
-      }]);
+      setActiveFilters([...updatedFilters, { id: 'price', label: t('price'), value }]);
     } else {
-      // Remove price filter
       setActiveFilters(activeFilters.filter(f => f.id !== 'price'));
     }
   };
   const handleRatingChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const value = e.target.value;
     setRatingFilter(value);
+    applyFilters(searchQuery, priceFilter, value);
     if (value) {
-      // Remove existing rating filter if any
       const updatedFilters = activeFilters.filter(f => f.id !== 'rating');
-      // Add new rating filter
-      setActiveFilters([...updatedFilters, {
-        id: 'rating',
-        label: t('rating'),
-        value
-      }]);
+      setActiveFilters([...updatedFilters, { id: 'rating', label: t('stars'), value }]);
     } else {
-      // Remove rating filter
       setActiveFilters(activeFilters.filter(f => f.id !== 'rating'));
     }
   };
   const removeFilter = (filterId: string) => {
     setActiveFilters(activeFilters.filter(f => f.id !== filterId));
     // Reset the corresponding filter
-    if (filterId === 'distance') {
-      setDistanceFilter('');
-    } else if (filterId === 'price') {
+    if (filterId === 'price') {
       setPriceFilter('');
+      applyFilters(searchQuery, '', ratingFilter);
     } else if (filterId === 'rating') {
       setRatingFilter('');
-    } else if (filterId.startsWith('amenity-')) {
-      const amenity = filterId.replace('amenity-', '');
-      setSelectedAmenities(selectedAmenities.filter(a => a !== amenity));
+      applyFilters(searchQuery, priceFilter, '');
     }
   };
   const clearAllFilters = () => {
     setActiveFilters([]);
-    setDistanceFilter('');
     setPriceFilter('');
     setRatingFilter('');
-    setSelectedAmenities([]);
+    setSearchQuery('');
+    setFilteredHotels(hotels);
   };
   const getAmenityLabel = (amenity: string) => {
     switch (amenity) {
@@ -171,18 +144,6 @@ const HotelFilters: React.FC<HotelFiltersProps> = ({
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div className="relative">
-            <select className="appearance-none w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-2 pl-3 pr-8 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 dark:text-gray-200 transition-colors duration-300" value={distanceFilter} onChange={handleDistanceChange}>
-              <option value="">{t('distance')}</option>
-              <option value="1">0-1 km</option>
-              <option value="3">0-3 km</option>
-              <option value="5">0-5 km</option>
-              <option value="10">0-10 km</option>
-            </select>
-            <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
-              <ArrowUpDown size={16} className="text-gray-400 dark:text-gray-500" />
-            </div>
-          </div>
-          <div className="relative">
             <select className="appearance-none w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-2 pl-3 pr-8 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 dark:text-gray-200 transition-colors duration-300" value={priceFilter} onChange={handlePriceChange}>
               <option value="">{t('price_range')}</option>
               <option value="$1,000 - $2,000">$1,000 - $2,000</option>
@@ -196,11 +157,12 @@ const HotelFilters: React.FC<HotelFiltersProps> = ({
           </div>
           <div className="relative">
             <select className="appearance-none w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md py-2 pl-3 pr-8 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-700 dark:text-gray-200 transition-colors duration-300" value={ratingFilter} onChange={handleRatingChange}>
-              <option value="">{t('rating')}</option>
-              <option value="9+ Excellent">9+ {t('excellent')}</option>
-              <option value="8-9 Very Good">8-9 {t('very_good')}</option>
-              <option value="7-8 Good">7-8 {t('good')}</option>
-              <option value="Less than 7">{t('less_than')} 7</option>
+              <option value="">{t('stars')}</option>
+              <option value="5">5 {t('stars')}</option>
+              <option value="4">4 {t('stars')}</option>
+              <option value="3">3 {t('stars')}</option>
+              <option value="2">2 {t('stars')}</option>
+              <option value="1">1 {t('stars')}</option>
             </select>
             <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
               <ArrowUpDown size={16} className="text-gray-400 dark:text-gray-500" />
@@ -210,51 +172,6 @@ const HotelFilters: React.FC<HotelFiltersProps> = ({
       </div>
 
       {/* Amenities filter */}
-      <div className="flex flex-wrap gap-2 pt-2">
-        <span className="text-sm text-gray-600 dark:text-gray-400 mr-2 py-1">
-          {t('amenities')}:
-        </span>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('wifi') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('wifi')}>
-          <Wifi size={14} className="mr-1" />
-          {t('wifi')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('gym') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('gym')}>
-          <Dumbbell size={14} className="mr-1" />
-          {t('gym')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('pool') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('pool')}>
-          <Waves size={14} className="mr-1" />
-          {t('pool')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('restaurant') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('restaurant')}>
-          <UtensilsCrossed size={14} className="mr-1" />
-          {t('restaurant')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('parking') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('parking')}>
-          <Car size={14} className="mr-1" />
-          {t('parking')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('pets') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('pets')}>
-          <PawPrint size={14} className="mr-1" />
-          {t('pets')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('business') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('business')}>
-          <Briefcase size={14} className="mr-1" />
-          {t('business_center')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('roomservice') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('roomservice')}>
-          <Coffee size={14} className="mr-1" />
-          {t('room_service')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('spa') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('spa')}>
-          <BoxIcon size={14} className="mr-1" />
-          {t('spa')}
-        </button>
-        <button className={`flex items-center px-3 py-1 rounded-full text-xs ${selectedAmenities.includes('bar') ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-600'} border transition-colors duration-300`} onClick={() => toggleAmenity('bar')}>
-          <Martini size={14} className="mr-1" />
-          {t('bar')}
-        </button>
-      </div>
     </div>;
 };
 export default HotelFilters;

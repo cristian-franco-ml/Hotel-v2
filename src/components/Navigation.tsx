@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useRef, Fragment, Component } from 'react';
-import { useLocation, Link } from 'react-router-dom';
+import React, { useEffect, useState, useRef, Fragment } from 'react';
+import { useLocation, Link, useNavigate } from 'react-router-dom';
 import { Search, Bell, Bookmark, Sun, Moon, Settings, HelpCircle, User, X, ChevronDown, CheckCircle, AlertCircle, Info, Calendar, PlusCircle, LogOut, UserCircle, Sliders, Command, Clock, Pin, DollarSign, BarChart2, TrendingUp } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 import { useTheme } from '../contexts/ThemeContext';
 import { Dialog, Menu, Transition } from '@headlessui/react';
 import { useOverlay, OverlayKey } from '../contexts/OverlayContext';
@@ -46,6 +47,7 @@ const Navigation = () => {
     toggleOverlay,
     closeAll
   } = useOverlay();
+  const navigate = useNavigate();
   // Refs for button focus management
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const notifButtonRef = useRef<HTMLButtonElement>(null);
@@ -91,7 +93,14 @@ const Navigation = () => {
   // Filter bookmarks based on search query
   const filteredBookmarks = bookmarkSearchQuery ? [...pinnedBookmarks, ...bookmarks].filter(b => b.title.toLowerCase().includes(bookmarkSearchQuery.toLowerCase()) || b.description.toLowerCase().includes(bookmarkSearchQuery.toLowerCase())) : [...pinnedBookmarks, ...bookmarks];
   // User data
-  const userData = null; // TODO: Fetch from Supabase or auth provider
+  const [userData, setUserData] = useState<any>(null);
+  useEffect(() => {
+    const getUser = async () => {
+      const { data } = await supabase.auth.getUser();
+      setUserData(data.user);
+    };
+    getUser();
+  }, []);
   // Toggle panel function
   const togglePanel = (panel: any) => {
     setActivePanel(activePanel === panel ? null : panel);
@@ -429,13 +438,13 @@ const Navigation = () => {
       }} role="menu" aria-modal="true" id="profile-menu">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center">
-              <img src={userData?.avatar} alt="Avatar" className="h-10 w-10 rounded-full mr-3" />
+              <img src={userData?.user_metadata?.avatar_url || '/arkusnexus-logo.png'} alt="Avatar" className="h-10 w-10 rounded-full mr-3" />
               <div>
                 <div className="font-medium text-gray-800 dark:text-white" data-bind="userName">
-                  {userData?.name}
+                  {userData?.user_metadata?.display_name || userData?.email || 'Usuario'}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {userData?.role}
+                  {userData?.email}
                 </div>
               </div>
             </div>
@@ -456,12 +465,12 @@ const Navigation = () => {
               <Sliders size={16} className="mr-3 text-gray-500 dark:text-gray-400" />
               Preferencias
             </a>
-            <a href="#" className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" onClick={e => {
-            e.preventDefault();
-            handleCloseOverlay(profileButtonRef);
-            // In a real app, this would log the user out
-            alert('Sesión cerrada');
-          }}>
+            <a href="#" className="flex items-center px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700" onClick={async e => {
+              e.preventDefault();
+              handleCloseOverlay(profileButtonRef);
+              await supabase.auth.signOut();
+              navigate('/auth');
+            }}>
               <LogOut size={16} className="mr-3 text-gray-500 dark:text-gray-400" />
               Cerrar sesión
             </a>

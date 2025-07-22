@@ -237,8 +237,8 @@ const SettingsPanel = () => {
             onClick={handleManualScraping}
           >
             Ejecutar scraping manualmente
-          </button>
-        </div>}
+            </button>
+          </div>}
       </div>
     </div>;
 };

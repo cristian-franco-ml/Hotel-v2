@@ -19,30 +19,41 @@ const RevenueTrendChart = () => {
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
+      // Get today and 30 days ago
+      const today = new Date();
+      const start = new Date();
+      start.setDate(today.getDate() - 29);
+      const yyyy = (d: Date) => d.getFullYear();
+      const mm = (d: Date) => String(d.getMonth() + 1).padStart(2, '0');
+      const dd = (d: Date) => String(d.getDate()).padStart(2, '0');
+      // Build all dates in range
+      const days: string[] = [];
+      for (let d = new Date(start); d <= today; d.setDate(d.getDate() + 1)) {
+        days.push(`${yyyy(d)}-${mm(d)}-${dd(d)}`);
+      }
+      // Fetch all bookings in range
       const { data: prices, error } = await supabase
         .from('hotel_usuario')
-        .select('checkin_date, room_type, price');
+        .select('checkin_date, price')
+        .gte('checkin_date', days[0])
+        .lte('checkin_date', days[days.length - 1]);
       if (error) {
         setLoading(false);
         return;
       }
-      // Agrupar por fecha y tipo de cuarto
-      const grouped: Record<string, Record<string, number>> = {};
-      const roomTypeSet = new Set<string>();
-      for (const row of prices) {
+      // Agrupar por fecha y sumar ingresos
+      const revenueByDate: Record<string, number> = {};
+      for (const row of prices || []) {
         const date = row.checkin_date;
-        const type = row.room_type;
         const price = parsePrice(row.price);
-        roomTypeSet.add(type);
-        if (!grouped[date]) grouped[date] = {};
-        grouped[date][type] = price;
+        if (!revenueByDate[date]) revenueByDate[date] = 0;
+        revenueByDate[date] += price;
       }
-      // Convertir a formato para recharts
-      const chartData = Object.entries(grouped).map(([date, types]) => ({
+      // Formatear para recharts, asegurando 0 si no hay datos
+      const chartData = days.map(date => ({
         date,
-        ...types
-      })).sort((a, b) => a.date.localeCompare(b.date));
-      setRoomTypes(Array.from(roomTypeSet));
+        Ganancias: revenueByDate[date] || 0
+      }));
       setData(chartData);
       setLoading(false);
     }
@@ -76,9 +87,7 @@ const RevenueTrendChart = () => {
               <YAxis />
               <Tooltip />
               <Legend />
-              {roomTypes.map((type, idx) => (
-                <Line key={type} type="monotone" dataKey={type} stroke={`hsl(${idx * 60}, 70%, 50%)`} dot={false} />
-              ))}
+              <Line type="monotone" dataKey="Ganancias" stroke="#3b82f6" dot={false} />
             </LineChart>
           </ResponsiveContainer>
         )}

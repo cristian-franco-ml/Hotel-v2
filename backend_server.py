@@ -19,7 +19,7 @@ CORS(app)
 
 # Supabase configuration (server-side only)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")  # Debe ser la service key
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")  # Debe ser la service key
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Faltan variables SUPABASE_URL o SUPABASE_SERVICE_KEY")
@@ -86,51 +86,27 @@ def hoteles_tijuana_json():
     except Exception as e:
         return {'error': str(e)}, 500
 
-@app.route('/api/events', methods=['GET'])
-def get_events():
-    """Fetch events from Supabase, RLS will filter by user automatically"""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return jsonify({'error': 'Supabase configuration missing'}), 500
-
-    user_jwt = request.headers.get('x-user-jwt')
-    headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {user_jwt if user_jwt else SUPABASE_KEY}'
-    }
-    try:
-        response = requests.get(
-            f'{SUPABASE_URL}/rest/v1/events?select=*&order=created_at.desc',
-            headers=headers
-        )
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': f'Supabase error: {response.status_code}', 'details': response.text}), response.status_code
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/hotels', methods=['GET'])
 def get_hotels():
-    """Fetch hotels from Supabase, RLS will filter by user automatically"""
-    if not SUPABASE_URL or not SUPABASE_KEY:
-        return jsonify({'error': 'Supabase configuration missing'}), 500
-
-    user_jwt = request.headers.get('x-user-jwt')
-    headers = {
-        'apikey': SUPABASE_KEY,
-        'Authorization': f'Bearer {user_jwt if user_jwt else SUPABASE_KEY}'
-    }
-    try:
-        response = requests.get(
-            f'{SUPABASE_URL}/rest/v1/hotels?select=*&order=created_at.desc',
-            headers=headers
-        )
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': f'Supabase error: {response.status_code}', 'details': response.text}), response.status_code
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    user_id = request.args.get('user_id')
+    print('[DEBUG] /api/hotels user_id recibido:', user_id)
+    if not user_id:
+        return jsonify({'error': 'user_id requerido'}), 400
+    url = f'{SUPABASE_URL}/rest/v1/hotel_usuario?user_id=eq.{user_id}&order=created_at.desc'
+    print('[DEBUG] URL consulta Supabase:', url)
+    response = requests.get(
+        url,
+        headers={
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}'
+        }
+    )
+    print('[DEBUG] Respuesta Supabase status:', response.status_code)
+    print('[DEBUG] Respuesta Supabase body:', response.text)
+    if response.status_code == 200:
+        return jsonify(response.json())
+    else:
+        return jsonify({'error': f'Supabase error: {response.status_code}', 'details': response.text}), response.status_code
 
 @app.route('/api/hotels', methods=['POST'])
 def create_hotel():
@@ -165,6 +141,28 @@ def create_hotel():
     )
     return jsonify(response.json()), response.status_code
 
+@app.route('/api/events', methods=['GET'])
+def get_events():
+    user_id = request.args.get('user_id')
+    print('[DEBUG] /api/events user_id recibido:', user_id)
+    if not user_id:
+        return jsonify({'error': 'user_id requerido'}), 400
+    url = f'{SUPABASE_URL}/rest/v1/events?user_id=eq.{user_id}&order=created_at.desc'
+    print('[DEBUG] URL consulta Supabase:', url)
+    response = requests.get(
+        url,
+        headers={
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}'
+        }
+    )
+    print('[DEBUG] Respuesta Supabase status:', response.status_code)
+    print('[DEBUG] Respuesta Supabase body:', response.text)
+    if response.status_code == 200:
+        return jsonify(response.json())
+    else:
+        return jsonify({'error': f'Supabase error: {response.status_code}', 'details': response.text}), response.status_code
+
 @app.route('/api/events', methods=['POST'])
 def create_event():
     data = request.get_json()
@@ -197,27 +195,62 @@ def create_event():
 @app.route('/api/auth-signup', methods=['POST'])
 def auth_signup():
     data = request.get_json()
+    print("[DEBUG] Datos recibidos en /api/auth-signup:", data)
     email = data.get('email')
     password = data.get('password')
     name = data.get('name')
     phone = data.get('phone')
     hotel = data.get('hotel')
+    hotel_metadata = data.get('hotel_metadata')
     if not all([email, password, name, phone, hotel]):
+        print("[DEBUG] Faltan campos requeridos", email, password, name, phone, hotel)
         return jsonify({'error': 'Faltan campos'}), 400
 
     # Crea el usuario en Supabase Auth y guarda metadatos
-    result = supabase.auth.admin.create_user({
-        'email': email,
-        'password': password,
-        'user_metadata': {
-            'display_name': name,
-            'phone': phone,
-            'hotel': hotel
-        }
-    })
-    if result.get('error'):
-        return jsonify({'error': result['error']['message']}), 400
-    return jsonify({'success': True}), 200
+    user_metadata = {
+        'display_name': name,
+        'phone': phone,
+        'hotel': hotel
+    }
+    if hotel_metadata:
+        user_metadata['hotel_metadata'] = hotel_metadata
+
+    try:
+        print("[DEBUG] user_metadata a enviar:", user_metadata)
+        result = supabase.auth.admin.create_user({
+            'email': email,
+            'password': password,
+            'user_metadata': user_metadata,
+            'email_confirm': True,  # Marca el correo como confirmado automáticamente
+            'phone_confirm': True   # Marca el teléfono como confirmado automáticamente
+        })
+        print("[DEBUG] Respuesta de Supabase:", result)
+        # Iniciar sesión automáticamente
+        auth_response = supabase.auth.sign_in_with_password({
+            'email': email,
+            'password': password
+        })
+        print("[DEBUG] Login automático:", auth_response)
+        # Convierte los objetos a dict para que sean serializables
+        session = getattr(auth_response, 'session', None)
+        user = getattr(auth_response, 'user', None)
+        def to_dict(obj):
+            if hasattr(obj, 'model_dump'):
+                return obj.model_dump()
+            elif hasattr(obj, '__dict__'):
+                return obj.__dict__
+            else:
+                return str(obj)
+        return jsonify({
+            'success': True,
+            'session': to_dict(session) if session else None,
+            'user': to_dict(user) if user else None
+        }), 200
+    except Exception as ex:
+        print("[DEBUG] Excepción en /api/auth-signup:", ex)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(ex)}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -499,6 +532,40 @@ def run_all_scrapings():
         return jsonify({'results': results}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/amadeus-hotels', methods=['POST'])
+def amadeus_hotels():
+    data = request.get_json()
+    lat = data.get('lat')
+    lng = data.get('lng')
+    radius = data.get('radius', 15)
+    keyword = data.get('keyword', None)
+    if lat is None or lng is None:
+        return jsonify({'error': 'lat y lng son requeridos'}), 400
+    args = [
+        'python', 'python_scripts/amadeus_hotels.py',
+        '--lat', str(lat),
+        '--lng', str(lng),
+        '--radius', str(radius)
+    ]
+    if keyword:
+        args += ['--keyword', keyword]
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            check=True,
+            encoding='utf-8',
+            errors='replace'
+        )
+        import json
+        hotels = json.loads(result.stdout)
+        return jsonify({'hotels': hotels}), 200
+    except subprocess.CalledProcessError as e:
+        return jsonify({'error': e.stderr}), 500
+    except Exception as ex:
+        return jsonify({'error': str(ex)}), 500
 
 if __name__ == '__main__':
     app.run(port=5000) 

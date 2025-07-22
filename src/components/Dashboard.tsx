@@ -1,7 +1,7 @@
 import React from 'react';
 import Navigation from './Navigation';
 import ResumenKPIs from './dashboard/ResumenKPIs';
-import { TrendLine } from './ui/ChartPlaceholder';
+import RevenueTrendChart from './dashboard/RevenueTrendChart';
 import { RadarChart } from './ui/ChartPlaceholder';
 import EventCalendar from './dashboard/EventCalendar';
 import CompetitorPriceComparison from './dashboard/CompetitorPriceComparison';
@@ -44,7 +44,7 @@ const Dashboard = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6">
           {/* Columna izquierda con gráficos principales */}
           <div className="lg:col-span-2 space-y-6">
-            <TrendLine placeholder title={t('revenue_performance')} />
+            <RevenueTrendChart />
             <CompetitorPriceComparison />
           </div>
           {/* Columna derecha con posición competitiva, eventos y posición de mercado */}

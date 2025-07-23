@@ -16,39 +16,30 @@ import RegisterForm from './components/RegisterForm';
 import { supabase } from './supabaseClient';
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { UserProvider } from './contexts/UserContext';
+import { UserProvider, useUser } from './contexts/UserContext';
 
 export function App() {
-  const [user, setUser] = useState<User | null>(null);
-  useEffect(() => {
-    const session = supabase.auth.getSession().then(({ data }) => setUser(data.session?.user || null));
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
-    });
-    return () => { listener?.subscription.unsubscribe(); };
-  }, []);
-
+  const { user, loading } = useUser();
+  if (loading) return null; // O un loader si prefieres
   return <ThemeProvider>
       <LanguageProvider>
         <DateRangeProvider>
           <OverlayProvider>
-            <UserProvider>
-              <BrowserRouter>
-                <OfflineBanner />
-                <Routes>
-                  <Route path="/register" element={!user ? <RegisterForm /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/auth" element={!user ? <AuthForm /> : <Navigate to="/dashboard" replace />} />
-                  <Route path="/" element={!user ? <AuthForm /> : <Navigate to="/dashboard" replace />} />
-                  {!user && <Route path="*" element={<Navigate to="/auth" replace />} />}
-                  <Route path="/dashboard" element={<Dashboard />} />
-                  <Route path="/hotels" element={<HotelsPage />} />
-                  <Route path="/rendimiento" element={<PerformancePage />} />
-                  <Route path="/estrategias" element={<StrategiesPage />} />
-                  <Route path="/precios" element={<PreciosPage />} />
-                  <Route path="/mercado" element={<MarketAnalysisPage />} />
-                </Routes>
-              </BrowserRouter>
-            </UserProvider>
+            <BrowserRouter>
+              <OfflineBanner />
+              <Routes>
+                <Route path="/register" element={!user ? <RegisterForm /> : <Navigate to="/dashboard" replace />} />
+                <Route path="/auth" element={!user ? <AuthForm /> : <Navigate to="/dashboard" replace />} />
+                <Route path="/" element={!user ? <AuthForm /> : <Navigate to="/dashboard" replace />} />
+                {!user && <Route path="*" element={<Navigate to="/auth" replace />} />}
+                <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/hotels" element={<HotelsPage />} />
+                <Route path="/rendimiento" element={<PerformancePage />} />
+                <Route path="/estrategias" element={<StrategiesPage />} />
+                <Route path="/precios" element={<PreciosPage />} />
+                <Route path="/mercado" element={<MarketAnalysisPage />} />
+              </Routes>
+            </BrowserRouter>
           </OverlayProvider>
         </DateRangeProvider>
       </LanguageProvider>

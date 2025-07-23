@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 import json
 import asyncio
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from supabase import create_client
 from playwright.async_api import async_playwright
 
@@ -234,17 +234,25 @@ def auth_signup():
         # Convierte los objetos a dict para que sean serializables
         session = getattr(auth_response, 'session', None)
         user = getattr(auth_response, 'user', None)
-        def to_dict(obj):
-            if hasattr(obj, 'model_dump'):
-                return obj.model_dump()
+        def to_serializable(obj):
+            if isinstance(obj, dict):
+                return {k: to_serializable(v) for k, v in obj.items()}
+            elif isinstance(obj, (list, tuple)):
+                return [to_serializable(i) for i in obj]
+            elif hasattr(obj, 'model_dump'):
+                return to_serializable(obj.model_dump())
             elif hasattr(obj, '__dict__'):
-                return obj.__dict__
+                return to_serializable(obj.__dict__)
+            elif isinstance(obj, datetime):
+                return obj.isoformat()
+            elif isinstance(obj, date):
+                return obj.isoformat()
             else:
-                return str(obj)
+                return obj
         return jsonify({
             'success': True,
-            'session': to_dict(session) if session else None,
-            'user': to_dict(user) if user else None
+            'session': to_serializable(session) if session else None,
+            'user': to_serializable(user) if user else None
         }), 200
     except Exception as ex:
         print("[DEBUG] Excepción en /api/auth-signup:", ex)
@@ -484,53 +492,96 @@ def run_scrape_hotel_propio():
 
 @app.route('/run-all-scrapings', methods=['POST'])
 def run_all_scrapings():
+    import traceback
     data = request.get_json()
+    print('[LOG] /run-all-scrapings called. data:', data)
     user_id = data.get('user_id')
     if not user_id:
+        print('[LOG] user_id not provided')
         return {'error': 'user_id requerido'}, 400
     try:
         # Obtener metadatos del usuario desde Supabase Auth
         SUPABASE_URL = os.getenv("SUPABASE_URL")
-        SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
+        SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        
         headers = {
             'apikey': SUPABASE_KEY,
             'Authorization': f'Bearer {SUPABASE_KEY}'
         }
-        user_resp = requests.get(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
+        user_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+        print('[LOG] Requesting user metadata from:', user_url)
+        user_resp = requests.get(user_url, headers=headers)
+        print('[LOG] Supabase user_resp.status_code:', user_resp.status_code)
+        print('[LOG] Supabase user_resp.text:', user_resp.text)
         if user_resp.status_code != 200:
+            print('[LOG] Failed to get user from Supabase:', user_resp.text)
             return {'error': 'No se pudo obtener el usuario de Supabase', 'details': user_resp.text}, 500
         user_data = user_resp.json()
-        user_meta = user_data.get('user', {}).get('user_metadata', {})
-        hotel_name = user_meta.get('hotel_name') or user_meta.get('name') or ''
+        print('[LOG] user_data:', user_data)
+        user_meta = user_data.get('user_metadata', {})
+        print('[LOG] user_meta:', user_meta)
+        hotel_name = user_meta.get('hotel') or user_meta.get('hotel_name') or user_meta.get('name') or ''
         phone = user_meta.get('Phone') or user_meta.get('phone') or ''
-        # Puedes extraer más datos si lo necesitas
+        print('[LOG] hotel_name:', hotel_name)
+        print('[LOG] phone:', phone)
         # Lista de scripts a ejecutar usando los datos del usuario
         scripts = [
-            ['python', 'python_scripts/scrape_hotels.py', user_id],
-            ['python', 'python_scripts/scrape_eventos.py', hotel_name, '10', user_id],
-            ['python', 'python_scripts/scrape_hotels_parallel.py', user_id, hotel_name or 'Tijuana']
+            ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name],
+            ['python', 'python_scripts/scrape_eventos.py', hotel_name, '10', user_id]
         ]
+        print('[LOG] Scripts to run:', scripts)
         processes = []
         for script_args in scripts:
-            p = subprocess.Popen(
-                script_args,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            processes.append((script_args, p))
+            print(f'[LOG] Launching subprocess: {script_args}')
+            try:
+                p = subprocess.Popen(
+                    script_args,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                processes.append((script_args, p))
+            except Exception as sub_ex:
+                print(f'[LOG] Exception launching subprocess {script_args}:', sub_ex)
+                traceback.print_exc()
+                processes.append((script_args, None))
         # Espera a que todos terminen y recoge la salida
         results = []
         for script_args, p in processes:
-            stdout, stderr = p.communicate()
-            results.append({
-                'script': ' '.join(script_args),
-                'stdout': stdout,
-                'stderr': stderr,
-                'returncode': p.returncode
-            })
+            if p is None:
+                results.append({
+                    'script': ' '.join(script_args),
+                    'stdout': '',
+                    'stderr': 'Failed to launch subprocess',
+                    'returncode': -1
+                })
+                continue
+            try:
+                stdout, stderr = p.communicate()
+                print(f'[LOG] Script: {script_args}')
+                print(f'[LOG] STDOUT: {stdout}')
+                print(f'[LOG] STDERR: {stderr}')
+                print(f'[LOG] Return code: {p.returncode}')
+                results.append({
+                    'script': ' '.join(script_args),
+                    'stdout': stdout,
+                    'stderr': stderr,
+                    'returncode': p.returncode
+                })
+            except Exception as comm_ex:
+                print(f'[LOG] Exception during communicate for {script_args}:', comm_ex)
+                traceback.print_exc()
+                results.append({
+                    'script': ' '.join(script_args),
+                    'stdout': '',
+                    'stderr': f'Exception during communicate: {comm_ex}',
+                    'returncode': -2
+                })
+        print('[LOG] All script results:', results)
         return jsonify({'results': results}), 200
     except Exception as e:
+        print('[LOG] General Exception in /run-all-scrapings:', e)
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/amadeus-hotels', methods=['POST'])

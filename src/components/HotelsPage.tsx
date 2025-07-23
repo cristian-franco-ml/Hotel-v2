@@ -10,10 +10,12 @@ import { FileDown, Map, List } from 'lucide-react';
 import { useLanguage } from '../contexts/LanguageContext';
 import Skeleton from './ui/Skeleton';
 import { supabase } from '../supabaseClient';
+import { useUser } from '../contexts/UserContext';
 const HotelsPage = () => {
   const {
     t
   } = useLanguage();
+  const { userId, createdBy } = useUser();
   const [hotels, setHotels] = useState<Hotel[]>([]);
   const [filteredHotels, setFilteredHotels] = useState<Hotel[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,11 +24,6 @@ const HotelsPage = () => {
   useEffect(() => {
     async function fetchHotels() {
       setLoading(true);
-      // Obtener el user_id del usuario autenticado
-      const userStr = localStorage.getItem('user');
-      const user = userStr ? JSON.parse(userStr) : null;
-      const userId = user?.id;
-      console.log('[DEBUG] userId usado para fetch:', userId);
       if (!userId) {
         setHotels([]);
         setFilteredHotels([]);
@@ -35,13 +32,12 @@ const HotelsPage = () => {
       }
       const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/hotels?user_id=${userId}`);
       const data = await res.json();
-      console.log('[DEBUG] Hoteles recibidos del backend:', data);
       setHotels(data || []);
       setFilteredHotels(data || []);
       setLoading(false);
     }
     fetchHotels();
-  }, []);
+  }, [userId]);
   const handleSearch = (query: string) => {
     setSearchQuery(query);
     if (!query) {

@@ -18,9 +18,12 @@ const AuthForm: React.FC = () => {
     setLoading(true);
     if (isLogin) {
       // Login
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setError(error.message);
       else {
+        if (data && data.user) {
+          console.log('[LOGIN] Usuario autenticado UUID:', data.user.id);
+        }
         setSuccess('¡Inicio de sesión exitoso!');
         navigate('/dashboard');
       }

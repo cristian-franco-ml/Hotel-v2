@@ -129,7 +129,7 @@ def subir_a_supabase(eventos, hotel_name, supabase_url, supabase_key, pais, user
             }
         try:
             print(f"Intentando guardar en Supabase: {data}")
-            url = f"{supabase_url}/rest/v1/events?on_conflict=nombre,fecha"
+            url = f"{supabase_url}/rest/v1/events?on_conflict=nombre,fecha,created_by"
             headers_upsert = headers.copy()
             headers_upsert["Prefer"] = "resolution=merge-duplicates"
             print(f"POST URL: {url}")
@@ -152,7 +152,10 @@ if SUPABASE_URL and SUPABASE_ANON_KEY:
         "Authorization": f"Bearer {user_jwt if user_jwt else SUPABASE_ANON_KEY}",
         "Content-Type": "application/json"
     }
-    delete_resp = requests.delete(f"{SUPABASE_URL}/rest/v1/events?nombre=neq.\u0000", headers=headers)
+    delete_resp = requests.delete(
+        f"{SUPABASE_URL}/rest/v1/events?created_by=eq.{user_uuid}",
+        headers=headers
+    )
     print(f"DELETE status: {delete_resp.status_code}, response: {delete_resp.text}")
     subir_a_supabase(eventos_mx, hotel_name, SUPABASE_URL, SUPABASE_ANON_KEY, 'MX', user_uuid)
     subir_a_supabase(eventos_us, hotel_name, SUPABASE_URL, SUPABASE_ANON_KEY, 'US', user_uuid)

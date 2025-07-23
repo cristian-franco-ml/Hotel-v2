@@ -3,6 +3,7 @@ import { BarChart2, HelpCircle } from 'lucide-react';
 import { useLanguage } from '../../contexts/LanguageContext';
 import { supabase } from '../../supabaseClient';
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { useUser } from '../../contexts/UserContext';
 
 const parsePrice = (priceStr: string): number => {
   if (!priceStr) return 0;
@@ -15,6 +16,7 @@ const RevenueTrendChart = () => {
   const [data, setData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [roomTypes, setRoomTypes] = useState<string[]>([]);
+  const { userId, createdBy } = useUser();
 
   useEffect(() => {
     async function fetchData() {
@@ -36,7 +38,8 @@ const RevenueTrendChart = () => {
         .from('hotel_usuario')
         .select('checkin_date, price')
         .gte('checkin_date', days[0])
-        .lte('checkin_date', days[days.length - 1]);
+        .lte('checkin_date', days[days.length - 1])
+        .eq('user_id', userId);
       if (error) {
         setLoading(false);
         return;

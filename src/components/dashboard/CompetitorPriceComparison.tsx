@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { GitCompare, HelpCircle } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
+import { useUser } from '../../contexts/UserContext';
 
 const MAX_COMPETITORS = 12;
 
@@ -20,21 +21,25 @@ const CompetitorPriceComparison = () => {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
   const [showAll, setShowAll] = useState(false);
+  const { userId, createdBy } = useUser();
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       const today = getToday();
-      // DEBUG: fetch all records to inspect checkin_date
+      // Filtrar por user_id o created_by según la tabla
+      // Ejemplo usando user_id:
       const { data: allOwnPrices } = await supabase
         .from('hotel_usuario')
         .select('*')
+        .eq('user_id', userId)
         .limit(5);
       // Fetch our hotel prices for today (usar checkin_date)
       const { data: ownPrices } = await supabase
         .from('hotel_usuario')
         .select('hotel_name, price')
-        .eq('checkin_date', today);
+        .eq('checkin_date', today)
+        .eq('user_id', userId);
       // Fetch competitors
       const { data: competitors } = await supabase.from('hoteles_parallel').select('*');
       // Calculate our average price

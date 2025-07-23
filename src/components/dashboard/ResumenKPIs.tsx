@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { TrendingUp, Users, DollarSign, Percent, Award, Calendar, GitCompare } from 'lucide-react';
 import KpiCard from '../ui/KpiCard';
 import { supabase } from '../../supabaseClient';
+import { useUser } from '../../contexts/UserContext';
 
 const parsePrice = (priceStr: string): number => {
   if (!priceStr) return 0;
@@ -27,21 +28,24 @@ const ResumenKPIs = () => {
     eventImpact: '—',
     brechaCompetitiva: '—',
   });
+  const { userId, createdBy } = useUser();
   useEffect(() => {
     async function fetchKPIs() {
       setLoading(true);
       const today = getToday();
-      // DEBUG: fetch all records to inspect checkin_date
+      // Filtrar por user_id
       const { data: allOwnPrices } = await supabase
         .from('hotel_usuario')
         .select('*')
+        .eq('user_id', userId)
         .limit(5);
       console.log('allOwnPrices sample', allOwnPrices);
       // Fetch own hotel prices for today (usar checkin_date)
       const { data: ownPrices } = await supabase
         .from('hotel_usuario')
         .select('*')
-        .eq('checkin_date', today);
+        .eq('checkin_date', today)
+        .eq('user_id', userId);
       console.log('ownPrices', ownPrices);
       // Fetch competitor hotels
       const { data: competitors } = await supabase.from('hoteles_parallel').select('*');

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { User, Bell, Shield, Languages, Monitor, Moon, Sun, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Smartphone } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
+import { useUser } from '../../contexts/UserContext';
 const SettingsPanel = () => {
   const {
     darkMode,
@@ -15,6 +16,7 @@ const SettingsPanel = () => {
     setLanguage,
     t
   } = useLanguage();
+  const { userId } = useUser();
   const [expandedSection, setExpandedSection] = useState<string | null>('apariencia');
   const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
@@ -28,10 +30,15 @@ const SettingsPanel = () => {
   // Handler para ejecutar scraping manualmente
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
   const handleManualScraping = async () => {
+    if (!userId) {
+      alert('No hay usuario autenticado.');
+      return;
+    }
     try {
       const response = await fetch(`${backendUrl}/run-all-scrapings`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId })
       });
       const data = await response.json();
       if (response.ok) {

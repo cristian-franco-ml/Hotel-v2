@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Calendar, Star, HelpCircle, ExternalLink } from 'lucide-react';
 import Skeleton from '../ui/Skeleton';
 import { supabase } from '../../supabaseClient';
+import { useUser } from '../../contexts/UserContext';
 
 interface EventCalendarProps {
   placeholder?: boolean;
@@ -23,6 +24,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
+  const { userId, createdBy } = useUser();
 
   useEffect(() => {
     async function fetchEvents() {
@@ -30,6 +32,7 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
       const { data, error } = await supabase
         .from('events')
         .select('id, nombre, fecha, lugar, enlace')
+        .eq('created_by', createdBy)
         .order('fecha', { ascending: true });
       if (!error && data) {
         setEvents(data);

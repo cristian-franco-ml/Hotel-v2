@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Navigation from './Navigation';
 import HotelFilters from './hotels/HotelFilters';
 import HotelList from './hotels/HotelList';
@@ -19,14 +19,25 @@ const HotelsPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'table' | 'map'>('table');
   const [loading, setLoading] = useState(false);
-  React.useEffect(() => {
+  useEffect(() => {
     async function fetchHotels() {
       setLoading(true);
-      const { data, error } = await supabase.from('hoteles_parallel').select('*');
-      if (!error && data) {
-        setHotels(data);
-        setFilteredHotels(data);
+      // Obtener el user_id del usuario autenticado
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      const userId = user?.id;
+      console.log('[DEBUG] userId usado para fetch:', userId);
+      if (!userId) {
+        setHotels([]);
+        setFilteredHotels([]);
+        setLoading(false);
+        return;
       }
+      const res = await fetch(`${import.meta.env.VITE_BACKEND_URL}/api/hotels?user_id=${userId}`);
+      const data = await res.json();
+      console.log('[DEBUG] Hoteles recibidos del backend:', data);
+      setHotels(data || []);
+      setFilteredHotels(data || []);
       setLoading(false);
     }
     fetchHotels();

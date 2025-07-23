@@ -15,14 +15,34 @@ const SettingsPanel = () => {
     setLanguage,
     t
   } = useLanguage();
-  const [expandedSection, setExpandedSection] = useState('apariencia');
-  const toggleSection = section => {
+  const [expandedSection, setExpandedSection] = useState<string | null>('apariencia');
+  const toggleSection = (section: string) => {
     setExpandedSection(expandedSection === section ? null : section);
   };
   // Toggle notification settings
   const [emailNotifications, setEmailNotifications] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
   const [twoFactorAuth, setTwoFactorAuth] = useState(false);
+  const [scrapingPeriod, setScrapingPeriod] = useState<number | undefined>(undefined);
+
+  // Handler para ejecutar scraping manualmente
+  const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+  const handleManualScraping = async () => {
+    try {
+      const response = await fetch(`${backendUrl}/run-all-scrapings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await response.json();
+      if (response.ok) {
+        alert('Scraping ejecutado:\n' + data.results.map((r: any) => `${r.script}: ${r.returncode === 0 ? 'OK' : 'Error'}\n${r.stdout || r.stderr}`).join('\n\n'));
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch (err) {
+      alert('Error de red o servidor');
+    }
+  };
   return <div className="divide-y divide-gray-200 dark:divide-gray-700 max-h-[80vh] overflow-y-auto transition-colors duration-300">
       {/* Account Settings */}
       <div className="p-4">
@@ -175,6 +195,48 @@ const SettingsPanel = () => {
             </div>
             <button className="text-sm text-blue-600 dark:text-blue-400 hover:underline transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400/70 rounded-md p-1">
               {t('change_password')}
+            </button>
+          </div>}
+      </div>
+
+      {/* Scraping Settings */}
+      <div className="p-4">
+        <button className="w-full flex items-center justify-between focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400/70 rounded-md p-1" onClick={() => toggleSection('scraping')}>
+          <div className="flex items-center">
+            {/* Puedes cambiar el ícono por uno más representativo si lo deseas */}
+            <Monitor size={18} className="text-gray-500 dark:text-gray-400 mr-2" />
+            <h4 className="font-medium text-gray-800 dark:text-white transition-colors duration-300">
+              Scraping
+            </h4>
+          </div>
+          {expandedSection === 'scraping' ? <ChevronUp size={18} className="text-gray-500 dark:text-gray-400" /> : <ChevronDown size={18} className="text-gray-500 dark:text-gray-400" />}
+        </button>
+        {expandedSection === 'scraping' && <div className="pl-7 space-y-4 mt-3">
+          <form className="space-y-3" onSubmit={e => { e.preventDefault(); /* Aquí puedes manejar el submit */ }}>
+            <label className="block">
+              <span className="text-sm text-gray-700 dark:text-gray-300 transition-colors duration-300">Periodo de scraping (días):</span>
+              <input
+                type="number"
+                min="1"
+                className="mt-1 block w-32 rounded-md border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-blue-500 focus:border-blue-500 transition-colors duration-300"
+                value={scrapingPeriod || ''}
+                onChange={e => setScrapingPeriod(Number(e.target.value))}
+                placeholder="Ej: 7"
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+            >
+              Guardar periodo
+            </button>
+          </form>
+          <button
+            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors"
+            onClick={handleManualScraping}
+          >
+            Ejecutar scraping manualmente
             </button>
           </div>}
       </div>

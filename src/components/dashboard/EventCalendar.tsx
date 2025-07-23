@@ -14,6 +14,22 @@ interface CalendarEvent {
   fecha: string;
   lugar: string;
   enlace: string;
+  distancia?: number;
+  categoria?: string;
+  asistenciaEsperada?: number;
+}
+
+// Lógica automática de impacto
+function calcularImpactoEvento(evento: CalendarEvent): number {
+  // Solo depende del día de la semana
+  if (!evento.fecha) return 0;
+  const dia = new Date(evento.fecha).getDay();
+  // 0: Domingo, 5: Viernes, 6: Sábado
+  if (dia === 5 || dia === 6) return 100; // Viernes o sábado: máximo impacto
+  if (dia === 0) return 80; // Domingo: alto impacto
+  if (dia === 4) return 60; // Jueves: medio-alto
+  if (dia === 3) return 40; // Miércoles: medio
+  return 20; // Lunes o martes: bajo
 }
 
 const MAX_EVENTS = 7;
@@ -72,33 +88,44 @@ const EventCalendar: React.FC<EventCalendarProps> = ({
             <div className="text-gray-500 dark:text-gray-400 text-sm">No hay eventos próximos.</div>
           )}
           {visibleEvents.map((event) => (
-            <div key={event.id} className="flex items-center p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
-              <div className="flex-shrink-0 mr-3">
-                <div className="w-10 h-10 flex flex-col items-center justify-center bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600">
-                  <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            <div key={event.id} className="flex items-center p-2 bg-white dark:bg-gray-700 rounded-lg shadow border border-gray-100 dark:border-gray-700 hover:shadow-md transition-all">
+              {/* Fecha */}
+              <div className="flex-shrink-0 mr-2">
+                <div className="w-8 h-8 flex flex-col items-center justify-center bg-blue-50 dark:bg-blue-900 rounded-md border border-blue-100 dark:border-blue-800">
+                  <span className="text-sm font-bold text-blue-700 dark:text-blue-200 leading-none">
                     {event.fecha.split('-')[2]}
                   </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-500">
-                    {event.fecha.split('-')[1]}
+                  <span className="text-[10px] text-blue-400 dark:text-blue-300 uppercase tracking-wider">
+                    {['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'][parseInt(event.fecha.split('-')[1],10)-1]}
                   </span>
                 </div>
               </div>
-              <div className="flex-1">
-                <div className="font-medium text-sm text-gray-800 dark:text-white">
-                  {event.nombre}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {event.lugar}
-                </div>
-                <div className="mt-1">
+              {/* Info principal */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center space-x-1">
+                  <span className="font-medium text-sm text-gray-800 dark:text-white truncate">{event.nombre}</span>
                   <a
                     href={event.enlace}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                    className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-800 transition"
+                    title="Ver evento"
                   >
-                    Ver evento <ExternalLink size={12} className="ml-1" />
+                    <ExternalLink size={12} />
                   </a>
+                </div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                  {event.lugar}
+                </div>
+                <div className="mt-1 flex items-center text-[11px]">
+                  <span className={
+                    'rounded-full font-semibold mr-1 px-1.5 py-0.5 ' +
+                    (calcularImpactoEvento(event) >= 90 ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300' :
+                    calcularImpactoEvento(event) >= 60 ? 'bg-yellow-400/20 text-yellow-700 dark:text-yellow-300' :
+                    'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-300')
+                  }>
+                    Impacto: {calcularImpactoEvento(event)} / 100
+                  </span>
                 </div>
               </div>
             </div>

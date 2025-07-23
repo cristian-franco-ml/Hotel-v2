@@ -14,6 +14,7 @@ import SettingsPanel from './navigation/SettingsPanel';
 import HelpPanel from './navigation/HelpPanel';
 import EmptyState from './ui/EmptyState';
 import { useLanguage } from '../contexts/LanguageContext';
+import { useUser } from '../contexts/UserContext';
 // Types for Notification and Bookmark
 interface Notification {
   id: number;
@@ -48,6 +49,7 @@ const Navigation = () => {
     closeAll
   } = useOverlay();
   const navigate = useNavigate();
+  const { user } = useUser();
   // Refs for button focus management
   const searchButtonRef = useRef<HTMLButtonElement>(null);
   const notifButtonRef = useRef<HTMLButtonElement>(null);
@@ -92,15 +94,6 @@ const Navigation = () => {
   const [bookmarkSearchQuery, setBookmarkSearchQuery] = useState('');
   // Filter bookmarks based on search query
   const filteredBookmarks = bookmarkSearchQuery ? [...pinnedBookmarks, ...bookmarks].filter(b => b.title.toLowerCase().includes(bookmarkSearchQuery.toLowerCase()) || b.description.toLowerCase().includes(bookmarkSearchQuery.toLowerCase())) : [...pinnedBookmarks, ...bookmarks];
-  // User data
-  const [userData, setUserData] = useState<any>(null);
-  useEffect(() => {
-    const getUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUserData(data.user);
-    };
-    getUser();
-  }, []);
   // Toggle panel function
   const togglePanel = (panel: any) => {
     setActivePanel(activePanel === panel ? null : panel);
@@ -438,13 +431,13 @@ const Navigation = () => {
       }} role="menu" aria-modal="true" id="profile-menu">
           <div className="p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="flex items-center">
-              <img src={userData?.user_metadata?.avatar_url || '/arkusnexus-logo.png'} alt="Avatar" className="h-10 w-10 rounded-full mr-3" />
+              <img src={user?.user_metadata?.avatar_url || '/arkusnexus-logo.png'} alt="Avatar" className="h-10 w-10 rounded-full mr-3" />
               <div>
                 <div className="font-medium text-gray-800 dark:text-white" data-bind="userName">
-                  {userData?.user_metadata?.display_name || userData?.email || 'Usuario'}
+                  {user?.user_metadata?.display_name || user?.email || 'Usuario'}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {userData?.email}
+                  {user?.email}
                 </div>
               </div>
             </div>

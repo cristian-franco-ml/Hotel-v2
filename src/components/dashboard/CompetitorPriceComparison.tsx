@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { GitCompare, HelpCircle } from 'lucide-react';
+import { GitCompare, HelpCircle, Star } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
 import { useUser } from '../../contexts/UserContext';
 
@@ -71,6 +71,7 @@ const CompetitorPriceComparison = () => {
           name: hotel.nombre,
           price: avgPrice,
           isUs: false,
+          estrellas: hotel.estrellas || hotel.categoria || 0,
         };
       });
       // Add our hotel as the first row
@@ -80,6 +81,7 @@ const CompetitorPriceComparison = () => {
           name: ownPrices && ownPrices.length > 0 ? ownPrices[0].hotel_name : 'Nuestro Hotel',
           price: ourAvg,
           isUs: true,
+          estrellas: allOwnPrices && allOwnPrices.length > 0 ? (allOwnPrices[0].estrellas || allOwnPrices[0].categoria || 0) : 0,
         },
         ...competitorRows
       ]);
@@ -111,6 +113,9 @@ const CompetitorPriceComparison = () => {
                 Hotel
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Estrellas
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                 Tarifa Actual
               </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -119,7 +124,7 @@ const CompetitorPriceComparison = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-            {loading ? <tr><td colSpan={3} className="text-center py-6 text-gray-500">Cargando...</td></tr> : visibleRows.map((row, idx) => (
+            {loading ? <tr><td colSpan={4} className="text-center py-6 text-gray-500">Cargando...</td></tr> : visibleRows.map((row, idx) => (
               <tr key={row.id} className={`hover:bg-gray-50 dark:hover:bg-gray-700 ${row.isUs ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <div className="flex items-center">
@@ -128,6 +133,18 @@ const CompetitorPriceComparison = () => {
                     </div>
                     {row.isUs && <span className="ml-2 px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-xs rounded-md">NOSOTROS</span>}
                   </div>
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  {!row.isUs && (
+                    <div className="flex text-yellow-400">
+                      {row.estrellas > 0
+                        ? Array(5).fill(0).map((_, i) => (
+                            <Star key={i} size={16} className={i < row.estrellas ? 'fill-current' : 'stroke-current'} fill={i < row.estrellas ? 'currentColor' : 'none'} />
+                          ))
+                        : <Star size={16} className="stroke-current" fill="none" />
+                      }
+                    </div>
+                  )}
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap">
                   <div className={`text-sm ${row.isUs ? 'font-bold text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'}`}>

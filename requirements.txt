@@ -1,0 +1,30 @@
+# --- Web scraping y automatización ---
+selenium
+webdriver-manager
+playwright
+beautifulsoup4
+# --- Data science y predicción ---
+pandas
+numpy
+prophet
+# --- HTTP y APIs ---
+requests
+python-dotenv
+# --- Supabase ---
+supabase
+# --- Utilidades ---
+python-jose
+PyJWT
+# --- Logging y retry ---
+tenacity
+# --- Geolocalización ---
+geopy
+# --- Otros (CLI, typing, etc) ---
+typing-extensions
+# --- Flask backend (si usas backend_server.py) ---
+Flask
+flask-cors
+# --- Para compatibilidad con async supabase ---
+supabase-py[async]
+# --- Para compatibilidad con async playwright ---
+playwright-async-api 

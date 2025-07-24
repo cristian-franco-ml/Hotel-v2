@@ -47,12 +47,19 @@ def run_scrapeo_geo():
         data = request.get_json()
         hotel_name = data.get('hotel_name', 'Grand Hotel Tijuana')
         radius = str(data.get('radius', 10))
-
-        args = [
-            'python', 'python_scripts/scrape_eventos.py',
-            hotel_name, str(radius)
-        ]
-
+        user_id = data.get('user_id', '')
+        hotel_metadata = data.get('hotel_metadata', {})
+        geo = hotel_metadata.get('geoCode') if hotel_metadata else None
+        if geo and 'latitude' in geo and 'longitude' in geo:
+            args = [
+                'python', 'python_scripts/scrape_eventos.py',
+                str(geo['latitude']), str(geo['longitude']), str(radius), user_id
+            ]
+        else:
+            args = [
+                'python', 'python_scripts/scrape_eventos.py',
+                hotel_name, str(radius), user_id
+            ]
         print("Args to subprocess:", args)
         user_jwt = request.headers.get('x-user-jwt')
         env = os.environ.copy()
@@ -69,7 +76,6 @@ def run_scrapeo_geo():
         )
         print("STDOUT:", result.stdout)
         print("STDERR:", result.stderr)
-
         return jsonify({'output': result.stdout}), 200
     except subprocess.CalledProcessError as e:
         print("STDOUT:", e.stdout)
@@ -588,8 +594,8 @@ def run_all_scrapings():
 def amadeus_hotels():
     data = request.get_json()
     lat = data.get('lat')
-    lng = data.get('lng')
-    radius = data.get('radius', 15)
+    lng = data.get('lng')  # Usar 'lng' para coincidir con el script
+    radius = data.get('radius', 20)
     keyword = data.get('keyword', None)
     if lat is None or lng is None:
         return jsonify({'error': 'lat y lng son requeridos'}), 400
@@ -611,11 +617,20 @@ def amadeus_hotels():
             errors='replace'
         )
         import json
-        hotels = json.loads(result.stdout)
+        try:
+            hotels = json.loads(result.stdout)
+        except Exception as ex:
+            print('[ERROR] No se pudo parsear JSON de amadeus_hotels.py:', result.stdout)
+            return jsonify({'error': 'Respuesta no válida del script Amadeus', 'details': result.stdout}), 500
+        if isinstance(hotels, dict) and 'error' in hotels:
+            print('[ERROR] Script Amadeus devolvió error:', hotels['error'])
+            return jsonify({'error': hotels['error']}), 500
         return jsonify({'hotels': hotels}), 200
     except subprocess.CalledProcessError as e:
+        print('[ERROR] Subprocess error:', e.stderr)
         return jsonify({'error': e.stderr}), 500
     except Exception as ex:
+        print('[ERROR] Excepción general:', ex)
         return jsonify({'error': str(ex)}), 500
 
 if __name__ == '__main__':

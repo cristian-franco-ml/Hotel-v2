@@ -14,6 +14,7 @@ interface RoomPrice {
   room_type: string;
   checkin_date: string;
   price: number;
+  ajuste_aplicado?: boolean;
 }
 
 interface Event {
@@ -47,11 +48,13 @@ const getRecommendation = (impact: number) => {
 const PriceAdjustmentsList: React.FC<PriceAdjustmentsListProps> = ({ loading: loadingProp = false }) => {
   const { userId, createdBy } = useUser();
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
   const [roomPrices, setRoomPrices] = useState<RoomPrice[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [accepting, setAccepting] = useState<string | null>(null);
   const [bulkAccepting, setBulkAccepting] = useState<string | null>(null);
   const [expandedEvent, setExpandedEvent] = useState<string | null>(null);
+  const [adjustedRooms, setAdjustedRooms] = useState<Record<string, Set<string>>>({}); // { [date]: Set<roomId> }
 
   // Generar los próximos 30 días
   const today = new Date();
@@ -61,29 +64,31 @@ const PriceAdjustmentsList: React.FC<PriceAdjustmentsListProps> = ({ loading: lo
     return d.toISOString().slice(0, 10);
   });
 
+  // Mueve fetchData fuera del useEffect para poder llamarlo después de aplicar ajustes
+  const fetchData = async (showLoader = true) => {
+    if (showLoader) setLoading(true);
+    if (!createdBy) return;
+    // Obtener precios base de hotel_usuario
+    const { data: prices, error: priceError } = await supabase
+      .from('hotel_usuario')
+      .select('id, hotel_name, room_type, checkin_date, price, ajuste_aplicado')
+      .eq('user_id', createdBy)
+      .gte('checkin_date', days[0])
+      .lte('checkin_date', days[days.length - 1]);
+    setRoomPrices(prices || []);
+    // Obtener eventos
+    const { data: eventsData, error: eventsError } = await supabase
+      .from('events')
+      .select('id, nombre, fecha, lugar, enlace, created_by')
+      .eq('created_by', createdBy)
+      .gte('fecha', days[0])
+      .lte('fecha', days[days.length - 1]);
+    setEvents(eventsData || []);
+    if (showLoader) setLoading(false);
+  };
+
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      if (!createdBy) return;
-      // Obtener precios base de hotel_usuario
-      const { data: prices, error: priceError } = await supabase
-        .from('hotel_usuario')
-        .select('id, hotel_name, room_type, checkin_date, price')
-        .eq('user_id', createdBy)
-        .gte('checkin_date', days[0])
-        .lte('checkin_date', days[days.length - 1]);
-      setRoomPrices(prices || []);
-      // Obtener eventos
-      const { data: eventsData, error: eventsError } = await supabase
-        .from('events')
-        .select('id, nombre, fecha, lugar, enlace, created_by')
-        .eq('created_by', createdBy)
-        .gte('fecha', days[0])
-        .lte('fecha', days[days.length - 1]);
-      setEvents(eventsData || []);
-      setLoading(false);
-    }
-    fetchData();
+    fetchData(true).then(() => setInitialLoad(false));
     // eslint-disable-next-line
   }, [createdBy]);
 
@@ -109,38 +114,53 @@ const PriceAdjustmentsList: React.FC<PriceAdjustmentsListProps> = ({ loading: lo
   // Filtrar solo días con evento
   const eventDays = Object.keys(eventsByDate).filter(date => pricesByDay[date] && pricesByDay[date].length > 0);
 
-  const handleAccept = async (room: RoomPrice, newPrice: number) => {
+  const handleAccept = async (room: RoomPrice, newPrice: number, date: string) => {
     setAccepting(room.id);
     await supabase
       .from('hotel_usuario')
-      .update({ price: newPrice })
+      .update({ price: newPrice, ajuste_aplicado: true })
       .eq('id', room.id);
-    setRoomPrices((prev) => prev.map(r => r.id === room.id ? { ...r, price: newPrice } : r));
+    setRoomPrices((prev) => prev.map(r => r.id === room.id ? { ...r, price: newPrice, ajuste_aplicado: true } : r));
+    setAdjustedRooms(prev => {
+      const updated = { ...prev };
+      if (!updated[date]) updated[date] = new Set();
+      updated[date] = new Set(updated[date]);
+      updated[date].add(room.id);
+      return updated;
+    });
     setAccepting(null);
+    await fetchData(false); // <-- Refresca los datos sin loader
   };
 
   // Acción para aplicar todas las recomendaciones de un evento
   const handleBulkAccept = async (date: string, rooms: RoomPrice[], recPct: number) => {
     setBulkAccepting(date);
-    const updates = rooms.map(room => {
+    const notAdjusted = rooms.filter(room => !room.ajuste_aplicado);
+    const updates = notAdjusted.map(room => {
       const recValue = Math.round(room.price * recPct);
       const newPrice = room.price + recValue;
       if (room.price === newPrice) return null;
       return supabase
         .from('hotel_usuario')
-        .update({ price: newPrice })
+        .update({ price: newPrice, ajuste_aplicado: true })
         .eq('id', room.id);
     }).filter(Boolean);
     await Promise.all(updates);
     setRoomPrices(prev => prev.map(room => {
-      if (room.checkin_date === date) {
+      if (room.checkin_date === date && !room.ajuste_aplicado) {
         const recValue = Math.round(room.price * recPct);
         const newPrice = room.price + recValue;
-        return { ...room, price: newPrice };
+        return { ...room, price: newPrice, ajuste_aplicado: true };
       }
       return room;
     }));
+    setAdjustedRooms(prev => {
+      const updated = { ...prev };
+      updated[date] = new Set(rooms.map(r => r.id));
+      return updated;
+    });
     setBulkAccepting(null);
+    await fetchData(false); // <-- Refresca los datos sin loader
   };
 
   return (
@@ -162,7 +182,7 @@ const PriceAdjustmentsList: React.FC<PriceAdjustmentsListProps> = ({ loading: lo
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
         Solo se muestran los días con eventos programados. Haz clic en “Aplicar ajuste” para actualizar el precio recomendado.
       </p>
-      {loading || loadingProp ? (
+      {initialLoad || loading || loadingProp ? (
         <div className="space-y-4">
           {Array(2).fill(0).map((_, idx) => (
             <div key={idx} className="rounded-xl bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 p-6">
@@ -237,6 +257,7 @@ const PriceAdjustmentsList: React.FC<PriceAdjustmentsListProps> = ({ loading: lo
                           {rooms.map((room) => {
                             const recValue = Math.round(room.price * recPct);
                             const newPrice = room.price + recValue;
+                            const isAdjusted = room.ajuste_aplicado || adjustedRooms[date]?.has(room.id) || room.price === newPrice;
                             return (
                               <tr key={room.id + date} className="group hover:bg-blue-100 dark:hover:bg-blue-900/40 transition">
                                 <td className="px-3 py-2 text-left text-gray-800 dark:text-gray-200 font-medium">{room.room_type}</td>
@@ -252,10 +273,10 @@ const PriceAdjustmentsList: React.FC<PriceAdjustmentsListProps> = ({ loading: lo
                                   {recValue > 0 ? (
                                     <button
                                       className="px-3 py-1 bg-blue-600 text-white rounded shadow hover:bg-blue-700 text-xs font-bold flex items-center gap-1 disabled:opacity-50"
-                                      disabled={accepting === room.id || room.price === newPrice}
-                                      onClick={() => handleAccept(room, newPrice)}
+                                      disabled={accepting === room.id || isAdjusted}
+                                      onClick={() => handleAccept(room, newPrice, date)}
                                     >
-                                      {accepting === room.id ? <span className="animate-pulse">Guardando...</span> : room.price === newPrice ? <span className="text-green-300">✔ Actualizado</span> : <><span>Aplicar ajuste</span> <ArrowUpRight size={12} /></>}
+                                      {accepting === room.id ? <span className="animate-pulse">Guardando...</span> : isAdjusted ? <span className="text-green-300">✔ Actualizado</span> : <><span>Aplicar ajuste</span> <ArrowUpRight size={12} /></>}
                                     </button>
                                   ) : <span className="text-gray-400">—</span>}
                                 </td>
@@ -267,7 +288,7 @@ const PriceAdjustmentsList: React.FC<PriceAdjustmentsListProps> = ({ loading: lo
                       <div className="mt-4">
                         <button
                           className="w-full px-4 py-2 bg-blue-700 text-white rounded-xl shadow hover:bg-blue-800 text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
-                          disabled={bulkAccepting === date}
+                          disabled={bulkAccepting === date || rooms.every(room => room.ajuste_aplicado)}
                           onClick={() => handleBulkAccept(date, rooms, recPct)}
                         >
                           {bulkAccepting === date ? <span className="animate-pulse">Aplicando...</span> : <>Aplicar a todo <ArrowUpRight size={16} /></>}

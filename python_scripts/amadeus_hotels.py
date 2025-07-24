@@ -1,87 +1,64 @@
 import os
-import requests
-from dotenv import load_dotenv
 import sys
+import requests
+import json
+from dotenv import load_dotenv
 
 load_dotenv()
 
-AMADEUS_API_KEY = os.getenv('AMADEUS_API_KEY')
-AMADEUS_API_SECRET = os.getenv('AMADEUS_API_SECRET')
+AMADEUS_CLIENT_ID = os.getenv("AMADEUS_API_KEY")
+AMADEUS_CLIENT_SECRET = os.getenv("AMADEUS_API_SECRET")
 
-# Obtener token de acceso de Amadeus
+if not AMADEUS_CLIENT_ID or not AMADEUS_CLIENT_SECRET:
+    print(json.dumps({"error": "Faltan las variables de entorno AMADEUS_CLIENT_ID o AMADEUS_CLIENT_SECRET"}))
+    sys.exit(1)
 
-def get_amadeus_token():
-    url = 'https://test.api.amadeus.com/v1/security/oauth2/token'
+def get_access_token():
+    url = "https://test.api.amadeus.com/v1/security/oauth2/token"
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     data = {
-        'grant_type': 'client_credentials',
-        'client_id': AMADEUS_API_KEY,
-        'client_secret': AMADEUS_API_SECRET
+        "grant_type": "client_credentials",
+        "client_id": AMADEUS_CLIENT_ID,
+        "client_secret": AMADEUS_CLIENT_SECRET
     }
-    response = requests.post(url, data=data)
-    response.raise_for_status()
-    return response.json()['access_token']
+    res = requests.post(url, headers=headers, data=data)
+    if res.status_code != 200:
+        print(json.dumps({"error": f"Error obteniendo token: {res.text}"}))
+        sys.exit(1)
+    return res.json().get("access_token")
 
-# Buscar hoteles cercanos
+def get_hotels_by_geocode(lat, lng, token=None, radius=20, keyword=None):
+    url = f"https://test.api.amadeus.com/v1/reference-data/locations/hotels/by-geocode"
+    headers = {"Authorization": f"Bearer {token}"}
+    params = {
+        "latitude": lat,
+        "longitude": lng,
+        "radius": radius
+    }
+    res = requests.get(url, headers=headers, params=params)
+    if res.status_code != 200:
+        raise Exception(f"Error en la consulta de hoteles: {res.text}")
+    data = res.json()
+    if "data" not in data:
+        raise Exception(f"Respuesta inesperada de Amadeus: {data}")
+    hotels = data["data"]
+    if keyword:
+        hotels = [h for h in hotels if keyword.lower() in h.get("name", "").lower()]
+    return hotels
 
-def search_hotels(lat, lng, radius_km, keyword=None):
-    try:
-        token = get_amadeus_token()
-        url = 'https://test.api.amadeus.com/v1/reference-data/locations/hotels/by-geocode'
-        params = {
-            'latitude': lat,
-            'longitude': lng,
-            'radius': radius_km,
-            'radiusUnit': 'KM',
-            'hotelSource': 'ALL',
-            'page[limit]': 20
-        }
-        if keyword:
-            params['keyword'] = keyword
-        headers = {
-            'Authorization': f'Bearer {token}'
-        }
-        response = requests.get(url, params=params, headers=headers)
-        if response.status_code != 200:
-            # Si la API responde con error, devolver lista vacía
-            print("Token:", token)
-            print("URL:", url)
-            print("Params:", params)
-            print("Headers:", headers)
-            print("Status code:", response.status_code)
-            print("Response text:", response.text)
-            return []
-            
-        hotels = response.json().get('data', [])
-        # Extraer campos relevantes
-        result = []
-        for h in hotels:
-            info = h.get('hotel', {})
-            result.append({
-                'id': info.get('hotelId'),
-                'name': info.get('name'),
-                'latitude': info.get('latitude'),
-                'longitude': info.get('longitude'),
-                'address': info.get('address', {}).get('lines', []),
-                'city': info.get('address', {}).get('cityName'),
-                'country': info.get('address', {}).get('countryCode'),
-            })
-        return result
-    except Exception as e:
-        # Si ocurre cualquier excepción, devolver lista vacía
-        return []
-
-if __name__ == '__main__':
+# CLI Mode
+if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--lat', type=float, required=True)
-    parser.add_argument('--lng', type=float, required=True)
-    parser.add_argument('--radius', type=int, default=15)
-    parser.add_argument('--keyword', type=str, default=None)
+    parser = argparse.ArgumentParser(description="Buscar hoteles con Amadeus API")
+    parser.add_argument("--lat", required=True, help="Latitud")
+    parser.add_argument("--lng", required=True, help="Longitud")
+    parser.add_argument("--radius", required=False, default=20, type=int, help="Radio de búsqueda (km)")
+    parser.add_argument("--keyword", required=False, help="Filtrar por nombre de hotel")
     args = parser.parse_args()
     try:
-        hotels = search_hotels(args.lat, args.lng, args.radius, args.keyword)
-        import json
-        print(json.dumps(hotels, ensure_ascii=False, indent=2))
+        token = get_access_token()
+        hotels = get_hotels_by_geocode(args.lat, args.lng, token, args.radius, args.keyword)
+        print(json.dumps(hotels, ensure_ascii=False))
     except Exception as e:
-        print(f'Error: {e}', file=sys.stderr)
-        sys.exit(1) 
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)

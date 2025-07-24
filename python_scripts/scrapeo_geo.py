@@ -1,6 +1,9 @@
 import requests
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
+import sys
+import json
+import argparse
 
 class EventsFetcher:
     def __init__(self, api_key: str):
@@ -72,3 +75,41 @@ def get_hotel_coordinates(hotel_name):
         "Hotel Comfort Inn": (32.5256, -117.0321),
     }
     return hotels.get(hotel_name, (32.5149, -117.0382))
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Buscar eventos cerca del hotel del usuario usando metadata JSON.")
+    parser.add_argument('--meta', required=True, help='Ruta al archivo JSON de metadata de usuario')
+    parser.add_argument('--apikey', required=True, help='API Key de Ticketmaster')
+    parser.add_argument('--days', type=int, default=30, help='Días hacia adelante para buscar eventos')
+    parser.add_argument('--limit', type=int, default=15, help='Límite de eventos')
+    parser.add_argument('--radius', type=int, default=50, help='Radio de búsqueda en km')
+    args = parser.parse_args()
+
+    # Leer metadata
+    with open(args.meta, 'r', encoding='utf-8') as f:
+        meta = json.load(f)
+
+    hotel_name = meta.get('hotel') or meta.get('hotel_metadata', {}).get('name')
+    geo = meta.get('hotel_metadata', {}).get('geoCode', {})
+    latitude = geo.get('latitude')
+    longitude = geo.get('longitude')
+
+    # Fallback si no hay coordenadas
+    if latitude is None or longitude is None:
+        latitude, longitude = get_hotel_coordinates(hotel_name)
+
+    fetcher = EventsFetcher(api_key=args.apikey)
+    events = fetcher.get_events(
+        city=None,
+        days_ahead=args.days,
+        limit=args.limit,
+        latitude=latitude,
+        longitude=longitude,
+        radius=args.radius
+    )
+    print(json.dumps({
+        "hotel": hotel_name,
+        "latitude": latitude,
+        "longitude": longitude,
+        "events": events
+    }, ensure_ascii=False, indent=2))

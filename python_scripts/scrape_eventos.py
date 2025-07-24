@@ -7,6 +7,7 @@ from scrapeo_geo import EventsFetcher, get_hotel_coordinates
 from pathlib import Path
 import requests
 import subprocess
+import re
 
 
 
@@ -19,15 +20,28 @@ if not API_KEY:
 
 print("sys.argv:", sys.argv)
 
+def is_float(val):
+    try:
+        float(val)
+        return True
+    except:
+        return False
+
 # Argumentos esperados:
-#   hotel_name radio user_uuid
-if len(sys.argv) == 4:
+#   lat lon radio user_uuid  (preferido)
+#   hotel_name radio user_uuid (legacy)
+if len(sys.argv) == 5 and is_float(sys.argv[1]) and is_float(sys.argv[2]):
+    lat = float(sys.argv[1])
+    lon = float(sys.argv[2])
+    radius_km = int(sys.argv[3])
+    user_uuid = sys.argv[4]
+elif len(sys.argv) == 4:
     hotel_name = sys.argv[1]
     radius_km = int(sys.argv[2])
     user_uuid = sys.argv[3]
     lat, lon = get_hotel_coordinates(hotel_name)
 else:
-    print("Debes proporcionar los argumentos: hotel_name radio user_uuid")
+    print("Debes proporcionar los argumentos: lat lon radio user_uuid o hotel_name radio user_uuid")
     sys.exit(1)
 
 print(f"Hotel seleccionado: {hotel_name}")

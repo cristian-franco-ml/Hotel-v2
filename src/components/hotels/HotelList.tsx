@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Star, ChevronRight, Edit, Bookmark, Clock, Eye, Wifi, Dumbbell, Waves, UtensilsCrossed, Car, PawPrint, Briefcase, Coffee } from 'lucide-react';
 import { supabase } from '../../supabaseClient';
+import { useUser } from '../../contexts/UserContext';
 
 interface HotelCompetitorProps {
   id: string;
@@ -48,6 +49,10 @@ const CompetitorList = () => {
   const [competidores, setCompetidores] = useState<HotelCompetitorProps[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useUser();
+
+  // Obtener ciudad del usuario (insensible a mayúsculas/minúsculas)
+  const userCity = user?.user_metadata?.cityName?.toLowerCase() || null;
 
   useEffect(() => {
     async function fetchCompetidores() {
@@ -58,12 +63,20 @@ const CompetitorList = () => {
         setError(error.message);
         setCompetidores([]);
       } else {
-        setCompetidores(data || []);
+        // Filtrar por ciudad si está definida en el usuario
+        let filtered = data || [];
+        if (userCity) {
+          filtered = filtered.filter((hotel: any) =>
+            hotel.ciudad && hotel.ciudad.toLowerCase() === userCity
+          );
+        }
+        setCompetidores(filtered);
       }
       setLoading(false);
     }
     fetchCompetidores();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userCity]);
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-100 dark:border-gray-700 transition-colors duration-300">

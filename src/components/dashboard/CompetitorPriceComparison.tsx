@@ -21,7 +21,11 @@ const CompetitorPriceComparison = () => {
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<any[]>([]);
   const [showAll, setShowAll] = useState(false);
-  const { userId, createdBy } = useUser();
+  const { userId, createdBy, user } = useUser();
+
+  // Obtener ciudad del usuario (insensible a mayúsculas/minúsculas)
+  const userCity = user?.user_metadata?.hotel_metadata?.address?.cityName?.toLowerCase() || null;
+  console.log('[DEBUG] userCity (ciudad del usuario):', userCity);
 
   useEffect(() => {
     async function fetchData() {
@@ -41,7 +45,14 @@ const CompetitorPriceComparison = () => {
         .eq('checkin_date', today)
         .eq('user_id', userId);
       // Fetch competitors
-      const { data: competitors } = await supabase.from('hoteles_parallel').select('*');
+      const { data: competitorsRaw } = await supabase.from('hoteles_parallel').select('*');
+      // Filtrar por ciudad si está definida en el usuario
+      let competitors = competitorsRaw || [];
+      if (userCity) {
+        competitors = competitors.filter((hotel: any) =>
+          hotel.ciudad && hotel.ciudad.toLowerCase() === userCity
+        );
+      }
       // Calculate our average price
       let ourAvg = null;
       if (ownPrices && ownPrices.length > 0) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Bell, Shield, Languages, Monitor, Moon, Sun, ToggleLeft, ToggleRight, ChevronDown, ChevronUp, Smartphone } from 'lucide-react';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useLanguage } from '../../contexts/LanguageContext';
@@ -26,6 +26,40 @@ const SettingsPanel = () => {
   const [pushNotifications, setPushNotifications] = useState(true);
   const [twoFactorAuth, setTwoFactorAuth] = useState(false);
   const [scrapingPeriod, setScrapingPeriod] = useState<number | undefined>(undefined);
+  const [lastScrapingRun, setLastScrapingRun] = useState<string | undefined>(undefined);
+
+  // Nuevo: cargar el periodo actual y la última ejecución al montar
+  useEffect(() => {
+    if (!userId) return;
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    fetch(`${backendUrl}/get-scraping-period?user_id=${userId}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.scraping_period_days) setScrapingPeriod(data.scraping_period_days);
+        if (data.last_scraping_run) setLastScrapingRun(data.last_scraping_run);
+      });
+  }, [userId]);
+
+  const handleSavePeriod = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userId || !scrapingPeriod) return;
+    const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
+    try {
+      const res = await fetch(`${backendUrl}/set-scraping-period`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId, scraping_period_days: scrapingPeriod })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('Periodo guardado correctamente');
+      } else {
+        alert('Error al guardar periodo: ' + data.error);
+      }
+    } catch (err) {
+      alert('Error de red o servidor');
+    }
+  };
 
   // Handler para ejecutar scraping manualmente
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
@@ -219,7 +253,7 @@ const SettingsPanel = () => {
           {expandedSection === 'scraping' ? <ChevronUp size={18} className="text-gray-500 dark:text-gray-400" /> : <ChevronDown size={18} className="text-gray-500 dark:text-gray-400" />}
         </button>
         {expandedSection === 'scraping' && <div className="pl-7 space-y-4 mt-3">
-          <form className="space-y-3" onSubmit={e => { e.preventDefault(); /* Aquí puedes manejar el submit */ }}>
+          <form className="space-y-3" onSubmit={handleSavePeriod}>
             <label className="block">
               <span className="text-sm text-gray-700 dark:text-gray-300 transition-colors duration-300">Periodo de scraping (días):</span>
               <input
@@ -232,6 +266,11 @@ const SettingsPanel = () => {
                 required
               />
             </label>
+            {lastScrapingRun && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Última ejecución automática: {new Date(lastScrapingRun).toLocaleString()}
+              </div>
+            )}
             <button
               type="submit"
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"

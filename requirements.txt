@@ -28,3 +28,4 @@ flask-cors
 supabase-py[async]
 # --- Para compatibilidad con async playwright ---
 playwright-async-api 
+APScheduler>=3.10.0 

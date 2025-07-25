@@ -10,6 +10,9 @@ import re
 from datetime import datetime, timedelta, date
 from supabase import create_client
 from playwright.async_api import async_playwright
+import threading
+import time
+from apscheduler.schedulers.background import BackgroundScheduler
 
 # Load environment variables
 load_dotenv()
@@ -496,6 +499,60 @@ def run_scrape_hotel_propio():
         print('General Exception:', ex)
         return jsonify({'error': str(ex)}), 500
 
+@app.route('/get-scraping-period', methods=['GET'])
+def get_scraping_period():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'user_id requerido'}), 400
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+    headers = {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}'
+    }
+    user_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+    user_resp = requests.get(user_url, headers=headers)
+    if user_resp.status_code != 200:
+        return jsonify({'error': 'No se pudo obtener el usuario de Supabase', 'details': user_resp.text}), 500
+    user_data = user_resp.json()
+    user_meta = user_data.get('user_metadata', {})
+    scraping_period_days = user_meta.get('scraping_period_days')
+    last_scraping_run = user_meta.get('last_scraping_run')
+    return jsonify({'scraping_period_days': scraping_period_days, 'last_scraping_run': last_scraping_run})
+
+@app.route('/set-scraping-period', methods=['POST'])
+def set_scraping_period():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    scraping_period_days = data.get('scraping_period_days')
+    if not user_id or not scraping_period_days:
+        return jsonify({'error': 'user_id y scraping_period_days requeridos'}), 400
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+    headers = {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}',
+        'Content-Type': 'application/json'
+    }
+    user_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+    # Obtener metadata actual
+    user_resp = requests.get(user_url, headers=headers)
+    if user_resp.status_code != 200:
+        return jsonify({'error': 'No se pudo obtener el usuario de Supabase', 'details': user_resp.text}), 500
+    user_data = user_resp.json()
+    user_meta = user_data.get('user_metadata', {})
+    user_meta['scraping_period_days'] = scraping_period_days
+    print('PATCH URL:', user_url)
+    print('PATCH HEADERS:', headers)
+    print('PATCH BODY:', {"user_metadata": user_meta})
+    patch_resp = requests.put(user_url, headers={**headers, 'Content-Type': 'application/json'}, json={"user_metadata": user_meta})
+    print('PATCH STATUS CODE:', patch_resp.status_code)
+    if patch_resp.status_code != 200:
+        print('PATCH ERROR:', patch_resp.text)
+        return jsonify({'error': 'No se pudo actualizar la metadata', 'details': patch_resp.text}), 500
+    return jsonify({'success': True})
+
+# Modificar run_all_scrapings para guardar la última ejecución
 @app.route('/run-all-scrapings', methods=['POST'])
 def run_all_scrapings():
     import traceback
@@ -506,39 +563,27 @@ def run_all_scrapings():
         print('[LOG] user_id not provided')
         return {'error': 'user_id requerido'}, 400
     try:
-        # Obtener metadatos del usuario desde Supabase Auth
         SUPABASE_URL = os.getenv("SUPABASE_URL")
         SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-        
         headers = {
             'apikey': SUPABASE_KEY,
             'Authorization': f'Bearer {SUPABASE_KEY}'
         }
         user_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
-        print('[LOG] Requesting user metadata from:', user_url)
         user_resp = requests.get(user_url, headers=headers)
-        print('[LOG] Supabase user_resp.status_code:', user_resp.status_code)
-        print('[LOG] Supabase user_resp.text:', user_resp.text)
         if user_resp.status_code != 200:
-            print('[LOG] Failed to get user from Supabase:', user_resp.text)
             return {'error': 'No se pudo obtener el usuario de Supabase', 'details': user_resp.text}, 500
         user_data = user_resp.json()
-        print('[LOG] user_data:', user_data)
         user_meta = user_data.get('user_metadata', {})
-        print('[LOG] user_meta:', user_meta)
         hotel_name = user_meta.get('hotel') or user_meta.get('hotel_name') or user_meta.get('name') or ''
         phone = user_meta.get('Phone') or user_meta.get('phone') or ''
-        print('[LOG] hotel_name:', hotel_name)
-        print('[LOG] phone:', phone)
-        # Lista de scripts a ejecutar usando los datos del usuario
+        # Ejecutar los scripts como antes...
         scripts = [
             ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name],
             ['python', 'python_scripts/scrape_eventos.py', hotel_name, '10', user_id]
         ]
-        print('[LOG] Scripts to run:', scripts)
         processes = []
         for script_args in scripts:
-            print(f'[LOG] Launching subprocess: {script_args}')
             try:
                 p = subprocess.Popen(
                     script_args,
@@ -548,10 +593,7 @@ def run_all_scrapings():
                 )
                 processes.append((script_args, p))
             except Exception as sub_ex:
-                print(f'[LOG] Exception launching subprocess {script_args}:', sub_ex)
-                traceback.print_exc()
                 processes.append((script_args, None))
-        # Espera a que todos terminen y recoge la salida
         results = []
         for script_args, p in processes:
             if p is None:
@@ -564,10 +606,6 @@ def run_all_scrapings():
                 continue
             try:
                 stdout, stderr = p.communicate()
-                print(f'[LOG] Script: {script_args}')
-                print(f'[LOG] STDOUT: {stdout}')
-                print(f'[LOG] STDERR: {stderr}')
-                print(f'[LOG] Return code: {p.returncode}')
                 results.append({
                     'script': ' '.join(script_args),
                     'stdout': stdout,
@@ -575,20 +613,68 @@ def run_all_scrapings():
                     'returncode': p.returncode
                 })
             except Exception as comm_ex:
-                print(f'[LOG] Exception during communicate for {script_args}:', comm_ex)
-                traceback.print_exc()
                 results.append({
                     'script': ' '.join(script_args),
                     'stdout': '',
-                    'stderr': f'Exception during communicate: {comm_ex}',
-                    'returncode': -2
+                    'stderr': str(comm_ex),
+                    'returncode': -1
                 })
-        print('[LOG] All script results:', results)
-        return jsonify({'results': results}), 200
+        # Guardar la fecha de última ejecución en la metadata
+        from datetime import datetime
+        user_meta['last_scraping_run'] = datetime.utcnow().isoformat()
+        patch_resp = requests.put(user_url, headers={**headers, 'Content-Type': 'application/json'}, json={"user_metadata": user_meta})
+        # No importa si falla, solo loguear
+        if patch_resp.status_code != 200:
+            print('No se pudo actualizar last_scraping_run:', patch_resp.text)
+        return jsonify({'results': results})
+    except Exception as ex:
+        print('General Exception:', ex)
+        return jsonify({'error': str(ex)}), 500
+
+def run_scheduled_scrapings():
+    try:
+        SUPABASE_URL = os.getenv("SUPABASE_URL")
+        SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+        headers = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}'
+        }
+        # Obtener todos los usuarios
+        users_url = f"{SUPABASE_URL}/auth/v1/admin/users"
+        resp = requests.get(users_url, headers=headers)
+        if resp.status_code != 200:
+            print('No se pudo obtener la lista de usuarios:', resp.text)
+            return
+        users = resp.json().get('users', [])
+        for user in users:
+            user_id = user['id']
+            meta = user.get('user_metadata', {})
+            period = meta.get('scraping_period_days')
+            last_run = meta.get('last_scraping_run')
+            if not period:
+                continue
+            from datetime import datetime, timedelta
+            now = datetime.utcnow()
+            if last_run:
+                try:
+                    last_run_dt = datetime.fromisoformat(last_run)
+                except Exception:
+                    last_run_dt = None
+            else:
+                last_run_dt = None
+            if not last_run_dt or (now - last_run_dt).days >= int(period):
+                print(f'Auto-running scraping para usuario {user_id}')
+                try:
+                    requests.post(f'http://localhost:5000/run-all-scrapings', json={'user_id': user_id}, timeout=600)
+                except Exception as e:
+                    print(f'Error auto-running scraping para usuario {user_id}:', e)
     except Exception as e:
-        print('[LOG] General Exception in /run-all-scrapings:', e)
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        print('Error en run_scheduled_scrapings:', e)
+
+# Inicializar el scheduler de APScheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(run_scheduled_scrapings, 'cron', hour=0, minute=0)
+scheduler.start()
 
 @app.route('/api/amadeus-hotels', methods=['POST'])
 def amadeus_hotels():

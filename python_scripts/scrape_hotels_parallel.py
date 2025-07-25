@@ -196,10 +196,9 @@ async def scrape_hotel_details(page, hotel_url: str, dias: int = 15) -> Dict[str
 # =============================
 # Scraping de la lista de hoteles y procesamiento paralelo
 # =============================
-async def scrape_hotels_parallel(user_id: str, ciudad: str, jwt: Optional[str] = None, dias: int = 15, headless: bool = False, concurrencia: int = 10) -> List[Dict[str, Any]]:
+async def scrape_hotels_parallel(ciudad: str, dias: int = 15, headless: bool = False, concurrencia: int = 10) -> List[Dict[str, Any]]:
     """
     Busca hoteles en la ciudad dada, abre cada uno en paralelo y extrae su información.
-    - user_id: UUID del usuario
     - ciudad: ciudad a buscar (ej: Tijuana)
     - dias: días a scrapear (default 15)
     - headless: modo headless o visible
@@ -263,7 +262,6 @@ Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
 """)
                     data = await scrape_hotel_details(hotel_page, hotel_url, dias=dias)
-                    data["user_id"] = user_id
                     results.append(data)
                     nonlocal processed_count
                     processed_count += 1
@@ -289,30 +287,29 @@ def post_hotel(session: requests.Session, url: str, headers: dict, data: dict):
     r = session.post(url, headers=headers, json=data)
     return r
 
-def insert_hotels_supabase(hotels: List[Dict[str, Any]], jwt: Optional[str] = None):
+def insert_hotels_supabase(hotels: List[Dict[str, Any]], ciudad: str):
     """
     Inserta cada hotel (un registro por hotel) en la tabla hoteles_parallel de Supabase.
     """
-    url = f"{SUPABASE_URL}/rest/v1/hoteles_parallel"
-    token = jwt if jwt else SUPABASE_KEY
+    url = f"{SUPABASE_URL}/rest/v1/hoteles_parallel?on_conflict=nombre,ciudad"
     headers = {
         "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {token}",
+        "Authorization": f"Bearer {SUPABASE_KEY}",
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates"
     }
     with requests.Session() as session:
         for hotel in hotels:
             data = {
-                "user_id": hotel["user_id"],
                 "nombre": hotel["nombre"],
                 "estrellas": hotel["estrellas"],
                 "url": hotel["url"],
                 "ubicacion": hotel["ubicacion"],
                 "fecha_scrape": hotel["fecha_scrape"],
-                "rooms_jsonb": hotel["rooms_jsonb"]
+                "rooms_jsonb": hotel["rooms_jsonb"],
+                "ciudad": ciudad
             }
-            logger.info(f"[INSERT] Se va a guardar hotel: {hotel['nombre']} con estrellas: {hotel['estrellas']} y url: {hotel['url']}")
+            logger.info(f"[INSERT] Se va a guardar hotel: {hotel['nombre']} con estrellas: {hotel['estrellas']} y url: {hotel['url']} en ciudad: {ciudad}")
             try:
                 r = post_hotel(session, url, headers, data)
                 logger.info(f"Status: {r.status_code}, Response: {r.text}")
@@ -326,25 +323,18 @@ def insert_hotels_supabase(hotels: List[Dict[str, Any]], jwt: Optional[str] = No
 def main():
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument('user_id', help='ID de usuario (UUID)')
     parser.add_argument('ciudad', help='Ciudad a buscar (ej. Tijuana)')
-    parser.add_argument('--jwt', help='JWT de usuario (opcional)', default=None)
     parser.add_argument('--headless', help='Ejecutar en modo headless (true/false)', default='false')
     parser.add_argument('--concurrencia', help='Número de hoteles a scrapear en paralelo', type=int, default=10)
     args = parser.parse_args()
-    user_id = args.user_id
     ciudad = args.ciudad
-    jwt = args.jwt
     headless = args.headless.lower() == 'true'
     concurrencia = args.concurrencia
-    if not is_valid_uuid(user_id):
-        logger.error(f"ERROR: user_id no es un UUID válido: {user_id}")
-        sys.exit(1)
-    logger.info(f"Scrapeando hoteles en {ciudad} para user_id {user_id}...")
+    logger.info(f"Scrapeando hoteles en {ciudad} ...")
     try:
-        hotels = asyncio.run(scrape_hotels_parallel(user_id, ciudad, jwt=jwt, dias=7, headless=headless, concurrencia=concurrencia))
+        hotels = asyncio.run(scrape_hotels_parallel(ciudad, dias=7, headless=headless, concurrencia=concurrencia))
         logger.info(f"Total hoteles scrapeados: {len(hotels)}")
-        insert_hotels_supabase(hotels, jwt=jwt)
+        insert_hotels_supabase(hotels, ciudad)
         logger.info("¡Listo!")
     except Exception as e:
         logger.error(f"Error general en el scraping: {e}")

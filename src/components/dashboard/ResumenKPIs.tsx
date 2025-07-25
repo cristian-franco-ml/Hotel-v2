@@ -28,7 +28,9 @@ const ResumenKPIs = () => {
     eventImpact: '—',
     brechaCompetitiva: '—',
   });
-  const { userId, createdBy } = useUser();
+  const { userId, createdBy, user } = useUser();
+  // Obtener ciudad del usuario (insensible a mayúsculas/minúsculas)
+  const userCity = user?.user_metadata?.cityName?.toLowerCase() || null;
   useEffect(() => {
     async function fetchKPIs() {
       setLoading(true);
@@ -48,7 +50,14 @@ const ResumenKPIs = () => {
         .eq('user_id', userId);
       console.log('ownPrices', ownPrices);
       // Fetch competitor hotels
-      const { data: competitors } = await supabase.from('hoteles_parallel').select('*');
+      const { data: competitorsRaw } = await supabase.from('hoteles_parallel').select('*');
+      // Filtrar por ciudad si está definida en el usuario
+      let competitors = competitorsRaw || [];
+      if (userCity) {
+        competitors = competitors.filter((hotel: any) =>
+          hotel.ciudad && hotel.ciudad.toLowerCase() === userCity
+        );
+      }
       // --- Tarifa Promedio (TDP) ---
       let tdp = 'N/A';
       if (ownPrices && ownPrices.length > 0) {

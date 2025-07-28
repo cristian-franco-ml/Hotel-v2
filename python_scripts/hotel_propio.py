@@ -1,6 +1,8 @@
 import asyncio
 import os
 import re
+import subprocess
+import sys
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client, AsyncClient
@@ -8,6 +10,24 @@ from playwright.async_api import async_playwright
 import uuid
 import random
 import requests
+
+# Install Playwright browsers if not already installed
+def ensure_playwright_browsers():
+    try:
+        import playwright
+        # Try to check if browsers are installed
+        result = subprocess.run([sys.executable, "-m", "playwright", "install", "--dry-run"], 
+                              capture_output=True, text=True)
+        if "No browsers are installed" in result.stdout or result.returncode != 0:
+            print("Installing Playwright browsers...")
+            subprocess.run([sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"], 
+                         check=True)
+            print("Playwright browsers installed successfully!")
+    except Exception as e:
+        print(f"Error ensuring Playwright browsers: {e}")
+
+# Ensure browsers are installed before importing playwright
+ensure_playwright_browsers()
 
 
 

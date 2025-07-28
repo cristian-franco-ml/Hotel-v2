@@ -5,16 +5,5 @@ set -o errexit
 echo "Installing Python dependencies..."
 pip install -r requirements.txt
 
-echo "Setting up Playwright environment..."
-# Create cache directory for Playwright
-mkdir -p /opt/render/project/src/.cache/ms-playwright
-
-# Set environment variables for Playwright
-export PLAYWRIGHT_BROWSERS_PATH=/opt/render/project/src/.cache/ms-playwright
-export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=0
-
-echo "Installing Playwright browsers..."
-# Install Chromium with dependencies
-python -m playwright install --with-deps chromium
-
-echo "Build completed successfully!" 
+echo "Build completed - browsers will be installed on first run"
+echo "Note: Playwright browsers will be installed automatically when needed" 

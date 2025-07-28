@@ -215,54 +215,69 @@ def auth_signup():
         print("[DEBUG] Faltan campos requeridos", email, password, name, phone, hotel)
         return jsonify({'error': 'Faltan campos'}), 400
 
-    # Crea el usuario en Supabase Auth y guarda metadatos
-    user_metadata = {
-        'display_name': name,
-        'phone': phone,
-        'hotel': hotel
-    }
-    if hotel_metadata:
-        user_metadata['hotel_metadata'] = hotel_metadata
-
     try:
-        print("[DEBUG] user_metadata a enviar:", user_metadata)
-        result = supabase.auth.admin.create_user({
+        # Crear usuario usando la API REST de Supabase
+        user_metadata = {
+            'display_name': name,
+            'phone': phone,
+            'hotel': hotel
+        }
+        if hotel_metadata:
+            user_metadata['hotel_metadata'] = hotel_metadata
+
+        # Crear usuario usando la API REST
+        create_user_url = f"{SUPABASE_URL}/auth/v1/admin/users"
+        create_user_data = {
             'email': email,
             'password': password,
             'user_metadata': user_metadata,
-            'email_confirm': True,  # Marca el correo como confirmado automáticamente
-            'phone_confirm': True   # Marca el teléfono como confirmado automáticamente
-        })
-        print("[DEBUG] Respuesta de Supabase:", result)
+            'email_confirm': True,
+            'phone_confirm': True
+        }
+        
+        headers = {
+            'apikey': SUPABASE_KEY,
+            'Authorization': f'Bearer {SUPABASE_KEY}',
+            'Content-Type': 'application/json'
+        }
+        
+        print("[DEBUG] Creando usuario con URL:", create_user_url)
+        print("[DEBUG] Headers:", headers)
+        print("[DEBUG] Data:", create_user_data)
+        
+        response = requests.post(create_user_url, headers=headers, json=create_user_data)
+        print("[DEBUG] Respuesta de creación:", response.status_code, response.text)
+        
+        if response.status_code != 200:
+            return jsonify({'error': f'Error creando usuario: {response.text}'}), response.status_code
+        
+        user_data = response.json()
+        user_id = user_data.get('id')
+        
         # Iniciar sesión automáticamente
-        auth_response = supabase.auth.sign_in_with_password({
+        signin_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
+        signin_data = {
             'email': email,
             'password': password
-        })
-        print("[DEBUG] Login automático:", auth_response)
-        # Convierte los objetos a dict para que sean serializables
-        session = getattr(auth_response, 'session', None)
-        user = getattr(auth_response, 'user', None)
-        def to_serializable(obj):
-            if isinstance(obj, dict):
-                return {k: to_serializable(v) for k, v in obj.items()}
-            elif isinstance(obj, (list, tuple)):
-                return [to_serializable(i) for i in obj]
-            elif hasattr(obj, 'model_dump'):
-                return to_serializable(obj.model_dump())
-            elif hasattr(obj, '__dict__'):
-                return to_serializable(obj.__dict__)
-            elif isinstance(obj, datetime):
-                return obj.isoformat()
-            elif isinstance(obj, date):
-                return obj.isoformat()
-            else:
-                return obj
-        return jsonify({
-            'success': True,
-            'session': to_serializable(session) if session else None,
-            'user': to_serializable(user) if user else None
-        }), 200
+        }
+        
+        signin_response = requests.post(signin_url, headers=headers, json=signin_data)
+        print("[DEBUG] Respuesta de login:", signin_response.status_code, signin_response.text)
+        
+        if signin_response.status_code == 200:
+            session_data = signin_response.json()
+            return jsonify({
+                'success': True,
+                'session': session_data,
+                'user': user_data
+            }), 200
+        else:
+            return jsonify({
+                'success': True,
+                'user': user_data,
+                'message': 'Usuario creado pero no se pudo iniciar sesión automáticamente'
+            }), 200
+            
     except Exception as ex:
         print("[DEBUG] Excepción en /api/auth-signup:", ex)
         import traceback
@@ -579,7 +594,7 @@ def run_all_scrapings():
         phone = user_meta.get('Phone') or user_meta.get('phone') or ''
         # Ejecutar los scripts como antes...
         scripts = [
-            ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name],
+            ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name, '--headless', 'true'],
             ['python', 'python_scripts/scrape_eventos.py', hotel_name, '10', user_id]
         ]
         processes = []

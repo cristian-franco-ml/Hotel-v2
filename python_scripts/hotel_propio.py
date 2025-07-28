@@ -60,14 +60,8 @@ def get_random_user_agent():
 
 async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN", headless_mode="false"):
     user_agent = get_random_user_agent()
-    # Convierte headless_mode a bool si es string
-    if isinstance(headless_mode, str):
-        if headless_mode.lower() == "false":
-            headless = False
-        else:
-            headless = True  # "true" o "new" o cualquier otro string
-    else:
-        headless = headless_mode
+    # En Render, siempre usar headless mode para evitar errores
+    headless = True
     # Elimina el try sin except/finally
     # try:
     async with async_playwright() as p:
@@ -329,7 +323,7 @@ async def insert_user_hotel_prices(user_id: str, hotel_name: str, results: list,
                 print("Error upserting:", data)
                 print("Exception:", e)
 
-async def main(user_id: str, hotel_name: str, headless_mode="new", jwt: str = ""):
+async def main(user_id: str, hotel_name: str, headless_mode="true", jwt: str = ""):
     prices = await scrape_booking_prices(hotel_name, headless_mode=headless_mode)
     print("Precios:", prices)
     await insert_user_hotel_prices(user_id, hotel_name, prices, jwt=jwt)

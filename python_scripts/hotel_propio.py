@@ -354,19 +354,36 @@ if __name__ == "__main__":
     import sys
     user_id = None
     hotel_name = None
-    headless_mode = "new"
+    headless_mode = "true"  # Default to true for Render
     jwt = ""
     args = sys.argv[1:]
+    
+    print(f"[DEBUG] Arguments received: {args}")
+    
     if len(args) >= 2:
         user_id = args[0]
         hotel_name = args[1]
-        # Buscar headless_mode y jwt en los argumentos
-        for i, arg in enumerate(args[2:]):
-            if arg == "--headless" and i+3 < len(args):
-                headless_mode = args[i+3]
-            if arg == "--jwt" and i+3 < len(args):
-                jwt = args[i+3]
-        asyncio.run(main(user_id, hotel_name, headless_mode, jwt))
+        
+        # Parse additional arguments
+        i = 2
+        while i < len(args):
+            if args[i] == "--headless" and i + 1 < len(args):
+                headless_mode = args[i + 1]
+                i += 2
+            elif args[i] == "--jwt" and i + 1 < len(args):
+                jwt = args[i + 1]
+                i += 2
+            else:
+                i += 1
+        
+        print(f"[DEBUG] Parsed arguments: user_id={user_id}, hotel_name={hotel_name}, headless_mode={headless_mode}, jwt={jwt}")
+        
+        try:
+            asyncio.run(main(user_id, hotel_name, headless_mode, jwt))
+        except Exception as e:
+            print(f"[ERROR] Failed to run main: {e}")
+            import traceback
+            traceback.print_exc()
     else:
         print("Modo API: ejecuta con 'uvicorn hotel_propio:app --reload'")
         print("Modo CLI: python hotel_propio.py <user_id> <hotel_name> [--headless <true|false|new>] [--jwt <token>]")

@@ -69,11 +69,31 @@ eventos_us = eventos_us_raw
 
 # Llamar a scrape_songkick.py para eventos de Songkick (Tijuana)
 try:
+    print("Ejecutando scraping de Songkick...")
     result = subprocess.run([
         'python', 'python_scripts/scrape_songkick.py',
         str(lat), str(lon), str(radius_km)
     ], capture_output=True, text=True, check=True, encoding='utf-8')
-    eventos_mx = json.loads(result.stdout)
+    
+    print(f"Songkick stdout: {result.stdout[:500]}...")
+    print(f"Songkick stderr: {result.stderr}")
+    
+    if result.stdout.strip():
+        eventos_mx = json.loads(result.stdout)
+    else:
+        print("Songkick returned empty output")
+        eventos_mx = []
+        
+except subprocess.CalledProcessError as e:
+    print(f"Error ejecutando scrape_songkick.py (CalledProcessError): {e}")
+    print(f"Return code: {e.returncode}")
+    print(f"stdout: {e.stdout}")
+    print(f"stderr: {e.stderr}")
+    eventos_mx = []
+except json.JSONDecodeError as e:
+    print(f"Error parsing JSON from Songkick: {e}")
+    print(f"Raw output: {result.stdout}")
+    eventos_mx = []
 except Exception as e:
     print(f"Error ejecutando scrape_songkick.py: {e}")
     eventos_mx = []

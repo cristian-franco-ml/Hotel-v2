@@ -15,14 +15,47 @@ import requests
 def ensure_playwright_browsers():
     try:
         import playwright
-        # Try to check if browsers are installed
-        result = subprocess.run([sys.executable, "-m", "playwright", "install", "--dry-run"], 
-                              capture_output=True, text=True)
-        if "No browsers are installed" in result.stdout or result.returncode != 0:
-            print("Installing Playwright browsers...")
-            subprocess.run([sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"], 
-                         check=True)
-            print("Playwright browsers installed successfully!")
+        print("Checking Playwright browser installation...")
+        
+        # Set environment variables for Playwright
+        os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/.cache/ms-playwright'
+        os.environ['PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD'] = '0'
+        
+        # Create cache directory if it doesn't exist
+        cache_dir = '/opt/render/project/src/.cache/ms-playwright'
+        os.makedirs(cache_dir, exist_ok=True)
+        
+        # Force install Chromium with dependencies
+        print("Installing Playwright browsers...")
+        result = subprocess.run([
+            sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"
+        ], capture_output=True, text=True, check=True)
+        
+        print("Playwright browsers installed successfully!")
+        print(f"Installation output: {result.stdout}")
+        
+        # Verify installation
+        verify_result = subprocess.run([
+            sys.executable, "-m", "playwright", "install", "--dry-run"
+        ], capture_output=True, text=True)
+        
+        if "No browsers are installed" in verify_result.stdout:
+            print("WARNING: Browsers still not found after installation")
+        else:
+            print("Browser installation verified successfully!")
+            
+    except subprocess.CalledProcessError as e:
+        print(f"Error installing Playwright browsers: {e}")
+        print(f"Error output: {e.stderr}")
+        # Try alternative installation method
+        try:
+            print("Trying alternative installation method...")
+            subprocess.run([
+                sys.executable, "-m", "playwright", "install", "chromium"
+            ], check=True)
+            print("Alternative installation successful!")
+        except Exception as alt_e:
+            print(f"Alternative installation also failed: {alt_e}")
     except Exception as e:
         print(f"Error ensuring Playwright browsers: {e}")
 
@@ -82,10 +115,31 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
     user_agent = get_random_user_agent()
     # En Render, siempre usar headless mode para evitar errores
     headless = True
-    # Elimina el try sin except/finally
-    # try:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+    
+    try:
+        async with async_playwright() as p:
+            # Try to launch browser with different options
+            browser = None
+            launch_options = [
+                {"headless": headless},
+                {"headless": headless, "args": ["--no-sandbox", "--disable-setuid-sandbox"]},
+                {"headless": headless, "args": ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]}
+            ]
+            
+            for i, options in enumerate(launch_options):
+                try:
+                    print(f"Attempting to launch browser with options {i+1}: {options}")
+                    browser = await p.chromium.launch(**options)
+                    print("Browser launched successfully!")
+                    break
+                except Exception as e:
+                    print(f"Launch attempt {i+1} failed: {e}")
+                    if i == len(launch_options) - 1:
+                        raise Exception(f"All browser launch attempts failed. Last error: {e}")
+                    continue
+            
+            if not browser:
+                raise Exception("Failed to launch browser with any configuration")
         page = await browser.new_page()
         # Universal: set user-agent via extra headers
         await page.set_extra_http_headers({"user-agent": user_agent})
@@ -304,6 +358,11 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
         popup_task.cancel()
         hotel_popup_task.cancel()
         return results
+    except Exception as e:
+        print(f"Error in scrape_booking_prices: {e}")
+        import traceback
+        traceback.print_exc()
+        return []
    
                         # -----SUPABASE----- #
                         # -----SUPABASE----- #

@@ -140,7 +140,10 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
             
             if not browser:
                 raise Exception("Failed to launch browser with any configuration")
-        page = await browser.new_page()
+            
+            # Create context and page
+            context = await browser.new_context()
+            page = await context.new_page()
         # Universal: set user-agent via extra headers
         await page.set_extra_http_headers({"user-agent": user_agent})
 
@@ -276,8 +279,6 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
             raise RuntimeError("No se encontró el enlace del hotel en los resultados.")
 
         # Justo antes de hacer clic en el enlace del hotel:
-        context = page.context
-
         # Prepara para capturar la nueva página
         new_page_promise = context.wait_for_event("page")
 
@@ -302,6 +303,7 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
             print("No se encontró la tabla de habitaciones")
             html = await page_to_scrape.content()
             print(html[:2000])
+            await context.close()
             await browser.close()
             popup_task.cancel()
             hotel_popup_task.cancel()
@@ -354,6 +356,7 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
                 else:
                     print(f"[No se encontró el selector #hprt-table para {checkin}]")
             results.append({"date": checkin, "rooms": day_rooms})
+        await context.close()
         await browser.close()
         popup_task.cancel()
         hotel_popup_task.cancel()
@@ -362,6 +365,14 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
         print(f"Error in scrape_booking_prices: {e}")
         import traceback
         traceback.print_exc()
+        # Try to close browser and context if they exist
+        try:
+            if 'context' in locals():
+                await context.close()
+            if 'browser' in locals():
+                await browser.close()
+        except:
+            pass
         return []
    
                         # -----SUPABASE----- #

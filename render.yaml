@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: hotel-backend
+    env: python
+    buildCommand: chmod +x build.sh && ./build.sh
+    startCommand: python backend_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.7
+      - key: PLAYWRIGHT_BROWSERS_PATH
+        value: /opt/render/project/src/.cache/ms-playwright
+      - key: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
+        value: 0 

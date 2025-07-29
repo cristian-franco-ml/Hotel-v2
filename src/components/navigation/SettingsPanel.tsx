@@ -64,23 +64,40 @@ const SettingsPanel = () => {
   // Handler para ejecutar scraping manualmente
   const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
   const handleManualScraping = async () => {
+    console.log('handleManualScraping called');
+    console.log('userId:', userId);
+    console.log('backendUrl:', backendUrl);
+    
     if (!userId) {
+      console.log('No userId found');
       alert('No hay usuario autenticado.');
       return;
     }
+    
+    const requestBody = { user_id: userId };
+    console.log('Request body:', requestBody);
+    
     try {
+      console.log('Making request to:', `${backendUrl}/run-all-scrapings`);
       const response = await fetch(`${backendUrl}/run-all-scrapings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: userId })
+        body: JSON.stringify(requestBody)
       });
+      
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
       const data = await response.json();
+      console.log('Response data:', data);
+      
       if (response.ok) {
         alert('Scraping ejecutado:\n' + data.results.map((r: any) => `${r.script}: ${r.returncode === 0 ? 'OK' : 'Error'}\n${r.stdout || r.stderr}`).join('\n\n'));
       } else {
         alert('Error: ' + data.error);
       }
     } catch (err) {
+      console.error('Error in handleManualScraping:', err);
       alert('Error de red o servidor');
     }
   };

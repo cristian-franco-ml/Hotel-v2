@@ -68,13 +68,55 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
             headless = True  # "true" o "new" o cualquier otro string
     else:
         headless = headless_mode
+    
+    print(f"[DEBUG] Iniciando scraping con headless={headless}, hotel={hotel_name}")
+    
     # Elimina el try sin except/finally
     # try:
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        # Configurar opciones adicionales para evitar detección de bots
+        browser_options = {
+            'headless': headless,
+            'args': [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu',
+                '--disable-background-timer-throttling',
+                '--disable-backgrounding-occluded-windows',
+                '--disable-renderer-backgrounding',
+                '--disable-features=TranslateUI',
+                '--disable-ipc-flooding-protection',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-web-security',
+                '--disable-features=VizDisplayCompositor',
+                '--user-agent=' + user_agent
+            ]
+        }
+        
+        browser = await p.chromium.launch(**browser_options)
         page = await browser.new_page()
+        
+        # Configurar el contexto para evitar detección de bots
+        await page.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined,
+            });
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5],
+            });
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en'],
+            });
+        """)
+        
         # Universal: set user-agent via extra headers
         await page.set_extra_http_headers({"user-agent": user_agent})
+        
+        print(f"[DEBUG] Browser iniciado con user-agent: {user_agent}")
 
         # Calcular fechas: hoy y mañana
         today = datetime.today()
@@ -89,6 +131,11 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
         )
         await page.goto(url)
         await page.wait_for_timeout(10000)
+        
+        # En modo headless, esperar más tiempo para que la página cargue completamente
+        if headless:
+            await page.wait_for_timeout(5000)
+            print("[DEBUG] Esperando carga adicional en modo headless...")
 
         # Escribir el nombre del hotel y seleccionar el primer resultado sugerido
         await page.fill("input[name='ss']", hotel_name)
@@ -227,64 +274,259 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
         # Lanzar tarea de cierre de popups en la página del hotel
         hotel_popup_task = asyncio.create_task(popup_closer(page_to_scrape, popup_selectors, interval=2))
 
+        # Definir selectores para la tabla de habitaciones
+        table_selectors = [
+            "#hprt-table",
+            ".hprt-table",
+            "table[data-et-view]",
+            "table.hprt-table",
+            ".roomstable",
+            "table[class*='room']",
+            "table[class*='hprt']",
+            "table"
+        ]
+
         # Esperar a que la tabla de habitaciones esté presente y visible
-        try:
-            await page_to_scrape.wait_for_selector("#hprt-table", timeout=30000, state='visible')
-        except Exception:
-            print("No se encontró la tabla de habitaciones")
-            html = await page_to_scrape.content()
-            print(html[:2000])
-            await browser.close()
-            popup_task.cancel()
-            hotel_popup_task.cancel()
-            return []
+        # Intentar múltiples selectores para la tabla
+        table_found = False
+        for selector in table_selectors:
+            try:
+                await page_to_scrape.wait_for_selector(selector, timeout=10000, state='visible')
+                # Verificar que sea realmente una tabla de habitaciones
+                element = await page_to_scrape.query_selector(selector)
+                if element:
+                    tag_name = await element.evaluate('el => el.tagName.toLowerCase()')
+                    if tag_name == 'table':
+                        # Verificar que contenga información de habitaciones
+                        element_html = await element.inner_html()
+                        if any(keyword in element_html.lower() for keyword in ['room', 'habitación', 'suite', 'deluxe', 'king', 'queen']):
+                            print(f"Tabla encontrada con selector: {selector}")
+                            table_found = True
+                            break
+            except Exception:
+                continue
+        
+        if not table_found:
+            print("No se encontró la tabla de habitaciones con ningún selector")
+            print("Intentando buscar cualquier tabla en la página...")
+            
+            # Buscar cualquier tabla en la página
+            try:
+                tables = await page_to_scrape.query_selector_all("table")
+                print(f"Encontradas {len(tables)} tablas en la página")
+                
+                for i, table in enumerate(tables):
+                    try:
+                        table_html = await table.inner_html()
+                        if "room" in table_html.lower() or "habitación" in table_html.lower():
+                            print(f"Tabla {i} contiene información de habitaciones")
+                            table_found = True
+                            break
+                    except Exception:
+                        continue
+            except Exception as e:
+                print(f"Error buscando tablas: {e}")
+            
+            if not table_found:
+                print("No se encontró ninguna tabla con información de habitaciones")
+                html = await page_to_scrape.content()
+                print("HTML de la página:")
+                print(html[:3000])
+                await browser.close()
+                popup_task.cancel()
+                hotel_popup_task.cancel()
+                return []
 
         # --- NUEVO: Scraping para los próximos 30 días, agrupado por día ---
         results = []
         base_url = page_to_scrape.url  # URL de la página de detalle del hotel
+        print(f"[DEBUG] URL base del hotel: {base_url}")
+        
         for offset in range(0, 30):
             checkin = (today + timedelta(days=offset)).strftime("%Y-%m-%d")
             checkout = (today + timedelta(days=offset+1)).strftime("%Y-%m-%d")
             # Modifica la URL con las nuevas fechas
             new_url = re.sub(r"checkin=\d{4}-\d{2}-\d{2}", f"checkin={checkin}", base_url)
             new_url = re.sub(r"checkout=\d{4}-\d{2}-\d{2}", f"checkout={checkout}", new_url)
+            
+            print(f"[DEBUG] Procesando fecha {checkin} - URL: {new_url}")
+            
             await page_to_scrape.goto(new_url)
-            await asyncio.sleep(2) # Espera entre fechas
+            await asyncio.sleep(3) # Aumentar espera entre fechas
+            
+            # Esperar a que la página cargue completamente
             try:
-                await page_to_scrape.wait_for_selector("#hprt-table", timeout=20000, state='visible')
+                await page_to_scrape.wait_for_load_state("networkidle", timeout=10000)
             except Exception:
+                print(f"Timeout esperando carga completa para {checkin}, continuando...")
+            
+            # Intentar múltiples selectores para la tabla
+            table_found = False
+            for selector in table_selectors:
+                try:
+                    await page_to_scrape.wait_for_selector(selector, timeout=10000, state='visible')
+                    # Verificar que sea realmente una tabla de habitaciones
+                    element = await page_to_scrape.query_selector(selector)
+                    if element:
+                        tag_name = await element.evaluate('el => el.tagName.toLowerCase()')
+                        if tag_name == 'table':
+                            # Verificar que contenga información de habitaciones
+                            element_html = await element.inner_html()
+                            if any(keyword in element_html.lower() for keyword in ['room', 'habitación', 'suite', 'deluxe', 'king', 'queen']):
+                                print(f"Tabla encontrada para {checkin} con selector: {selector}")
+                                table_found = True
+                                break
+                except Exception:
+                    continue
+            
+            if not table_found:
                 print(f"No se encontró la tabla de habitaciones para {checkin}")
                 html = await page_to_scrape.content()
                 print(f"[HTML para {checkin}]:\n" + html[:2000])
                 continue
-            rows = await page_to_scrape.query_selector_all("#hprt-table tr")
+            
+            # Mejorar la extracción de habitaciones con múltiples selectores
             day_rooms = []
-            for row in rows:
+            
+            # Intentar diferentes selectores para las filas de habitaciones
+            row_selectors = [
+                "#hprt-table tr",
+                "#hprt-table tbody tr",
+                ".hprt-table tr",
+                "table[data-et-view] tr"
+            ]
+            
+            rows = []
+            for selector in row_selectors:
                 try:
-                    room_type_el = await row.query_selector("th span.hprt-roomtype-icon-link")
-                    price_el = None
-                    tds = await row.query_selector_all("td")
-                    price_text = None
-                    for td in tds:
-                        td_text = await td.inner_text()
-                        # Busca un número con MXN, $ o solo número
-                        match = re.search(r'(MXN\s*\$?|\$)\s*[\d,.]+', td_text)
-                        if match:
-                            price_text = match.group(0)
-                            break
-                    if room_type_el and price_text:
-                        room_text = (await room_type_el.inner_text()).strip()
-                        day_rooms.append({"room_type": room_text, "price": price_text})
+                    rows = await page_to_scrape.query_selector_all(selector)
+                    if rows:
+                        print(f"Encontradas {len(rows)} filas con selector: {selector}")
+                        # Debug: mostrar el contenido de las primeras filas
+                        for i, row in enumerate(rows[:3]):
+                            try:
+                                row_text = await row.inner_text()
+                                print(f"  Fila {i+1}: {row_text[:200]}...")
+                            except Exception as e:
+                                print(f"  Error leyendo fila {i+1}: {e}")
+                        break
                 except Exception:
                     continue
+            
+            if not rows:
+                print(f"No se encontraron filas de habitaciones para {checkin}")
+                # Intentar buscar cualquier elemento que contenga información de habitaciones
+                try:
+                    all_elements = await page_to_scrape.query_selector_all("*")
+                    room_elements = []
+                    for elem in all_elements:
+                        try:
+                            elem_text = await elem.inner_text()
+                            if any(keyword in elem_text.lower() for keyword in ['room', 'habitación', 'suite', 'deluxe', 'king', 'queen']):
+                                room_elements.append(elem_text[:100])  # Primeros 100 caracteres
+                        except Exception:
+                            continue
+                    
+                    if room_elements:
+                        print(f"Elementos con información de habitaciones encontrados para {checkin}:")
+                        for i, elem in enumerate(room_elements[:5]):  # Solo mostrar los primeros 5
+                            print(f"  {i+1}. {elem}")
+                except Exception as e:
+                    print(f"Error buscando elementos de habitaciones: {e}")
+                continue
+            
+            for row in rows:
+                try:
+                    # Intentar múltiples selectores para el tipo de habitación
+                    room_type_selectors = [
+                        "th span.hprt-roomtype-icon-link",
+                        "th .hprt-roomtype-icon-link",
+                        "th .hprt-roomtype",
+                        "th span",
+                        "th"
+                    ]
+                    
+                    room_type_el = None
+                    room_text = None
+                    
+                    for room_selector in room_type_selectors:
+                        try:
+                            room_type_el = await row.query_selector(room_selector)
+                            if room_type_el:
+                                room_text = (await room_type_el.inner_text()).strip()
+                                if room_text and len(room_text) > 5:  # Asegurar que no esté vacío
+                                    break
+                        except Exception:
+                            continue
+                    
+                    if not room_text:
+                        continue
+                    
+                    # Buscar precio en todas las celdas de la fila
+                    price_text = None
+                    tds = await row.query_selector_all("td")
+                    
+                    for td in tds:
+                        try:
+                            td_text = await td.inner_text()
+                            # Buscar diferentes formatos de precio
+                            price_patterns = [
+                                r'(MXN\s*\$?|\$)\s*[\d,.]+',
+                                r'[\d,.]+\s*(MXN|\$)',
+                                r'\$[\d,.]+',
+                                r'MXN\s*[\d,.]+',
+                                r'[\d,]+\.?\d*\s*(MXN|\$)',
+                                r'(MXN|\$)\s*[\d,]+\.?\d*'
+                            ]
+                            
+                            for pattern in price_patterns:
+                                match = re.search(pattern, td_text, re.IGNORECASE)
+                                if match:
+                                    price_text = match.group(0).strip()
+                                    break
+                            
+                            if price_text:
+                                break
+                        except Exception:
+                            continue
+                    
+                    if room_text and price_text:
+                        # Verificar que no sea un duplicado en el mismo día
+                        is_duplicate = False
+                        for existing_room in day_rooms:
+                            if existing_room["room_type"] == room_text and existing_room["price"] == price_text:
+                                is_duplicate = True
+                                break
+                        
+                        if not is_duplicate:
+                            day_rooms.append({"room_type": room_text, "price": price_text})
+                            print(f"Habitación encontrada para {checkin}: {room_text} - {price_text}")
+                
+                except Exception as e:
+                    print(f"Error procesando fila para {checkin}: {e}")
+                    continue
+            
             if not day_rooms:
                 # Si no se encontraron cuartos, imprime el HTML de la tabla
                 table = await page_to_scrape.query_selector("#hprt-table")
                 if table:
                     table_html = await table.inner_html()
                     print(f"[Tabla vacía para {checkin}]:\n" + table_html[:2000])
+                    
+                    # Debug adicional: buscar cualquier texto que contenga "room" o "habitación"
+                    try:
+                        all_text = await table.inner_text()
+                        room_keywords = ["room", "habitación", "suite", "deluxe", "standard", "king", "queen", "twin"]
+                        for keyword in room_keywords:
+                            if keyword.lower() in all_text.lower():
+                                print(f"  Encontrada palabra clave '{keyword}' en la tabla")
+                    except Exception as e:
+                        print(f"  Error al analizar texto de tabla: {e}")
                 else:
                     print(f"[No se encontró el selector #hprt-table para {checkin}]")
+            else:
+                print(f"Total de habitaciones encontradas para {checkin}: {len(day_rooms)}")
+            
             results.append({"date": checkin, "rooms": day_rooms})
         await browser.close()
         popup_task.cancel()
@@ -301,9 +543,11 @@ async def insert_user_hotel_prices(user_id: str, hotel_name: str, results: list,
     if not is_valid_uuid(user_id):
         print("ERROR: user_id no es un UUID válido:", user_id)
         return
+    
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_ANON_KEY")
-    url = f"{SUPABASE_URL}/rest/v1/hotel_usuario?on_conflict=user_id,hotel_name,checkin_date,room_type"
+    # Cambiar la estrategia de conflicto para permitir múltiples habitaciones por día
+    url = f"{SUPABASE_URL}/rest/v1/hotel_usuario"
     token = jwt if jwt else SUPABASE_KEY
     headers = {
         "apikey": SUPABASE_KEY,
@@ -311,10 +555,23 @@ async def insert_user_hotel_prices(user_id: str, hotel_name: str, results: list,
         "Content-Type": "application/json",
         "Prefer": "resolution=merge-duplicates"
     }
+    
+    total_inserted = 0
+    total_errors = 0
+    
+    print(f"Iniciando inserción de datos para {len(results)} días...")
+    
     for day in results:
         checkin_date = day["date"]
+        rooms_count = len(day["rooms"])
+        print(f"Procesando {checkin_date}: {rooms_count} habitaciones")
+        
         for room in day["rooms"]:
+            # Generar un ID único para cada inserción
+            unique_id = str(uuid.uuid4())
+            
             data = {
+                "id": unique_id,  # Agregar ID único
                 "user_id": user_id,
                 "hotel_name": hotel_name,
                 "scrape_date": datetime.today().strftime("%Y-%m-%d"),
@@ -324,10 +581,22 @@ async def insert_user_hotel_prices(user_id: str, hotel_name: str, results: list,
             }
             try:
                 r = requests.post(url, headers=headers, json=data)
-                print(f"Status: {r.status_code}, Response: {r.text}")
+                if r.status_code in [200, 201]:
+                    total_inserted += 1
+                    print(f"[OK] Insertado: {checkin_date} - {room['room_type']} - {room['price']}")
+                else:
+                    total_errors += 1
+                    print(f"[ERROR] Error {r.status_code}: {checkin_date} - {room['room_type']} - {room['price']}")
+                    print(f"  Response: {r.text}")
             except Exception as e:
-                print("Error upserting:", data)
-                print("Exception:", e)
+                total_errors += 1
+                print(f"[EXCEPTION] {checkin_date} - {room['room_type']} - {room['price']}")
+                print(f"  Error: {e}")
+    
+    print(f"Resumen de inserción:")
+    print(f"  - Total insertados: {total_inserted}")
+    print(f"  - Total errores: {total_errors}")
+    print(f"  - Días procesados: {len(results)}")
 
 async def main(user_id: str, hotel_name: str, headless_mode="new", jwt: str = ""):
     prices = await scrape_booking_prices(hotel_name, headless_mode=headless_mode)

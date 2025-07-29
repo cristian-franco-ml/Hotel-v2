@@ -18,7 +18,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"])
+
 
 # Supabase configuration (server-side only)
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -571,9 +572,16 @@ def set_scraping_period():
 @app.route('/run-all-scrapings', methods=['POST'])
 def run_all_scrapings():
     import traceback
+    print("=== /run-all-scrapings endpoint called ===")
+    print("Request method:", request.method)
+    print("Request headers:", dict(request.headers))
+    print("Request origin:", request.headers.get('Origin'))
+    
     data = request.get_json()
     print('[LOG] /run-all-scrapings called. data:', data)
     user_id = data.get('user_id')
+    print('[LOG] user_id extracted:', user_id)
+    
     if not user_id:
         print('[LOG] user_id not provided')
         return {'error': 'user_id requerido'}, 400
@@ -600,14 +608,23 @@ def run_all_scrapings():
         processes = []
         for script_args in scripts:
             try:
+                # Usar sys.executable para asegurar que usamos el mismo Python
+                import sys
+                script_args[0] = sys.executable
+                
+                print(f"Ejecutando script: {' '.join(script_args)}")
+                
                 p = subprocess.Popen(
                     script_args,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
-                    text=True
+                    text=True,
+                    cwd=os.getcwd(),  # Asegurar que estamos en el directorio correcto
+                    env=os.environ.copy()  # Copiar el entorno actual
                 )
                 processes.append((script_args, p))
             except Exception as sub_ex:
+                print(f"Error lanzando subprocess: {sub_ex}")
                 processes.append((script_args, None))
         results = []
         for script_args, p in processes:
@@ -620,13 +637,28 @@ def run_all_scrapings():
                 })
                 continue
             try:
-                stdout, stderr = p.communicate()
+                stdout, stderr = p.communicate(timeout=900)  # 15 minutos de timeout para hoteles
                 results.append({
                     'script': ' '.join(script_args),
                     'stdout': stdout,
                     'stderr': stderr,
                     'returncode': p.returncode
                 })
+                print(f"Script completado: {' '.join(script_args)}")
+                print(f"Return code: {p.returncode}")
+                if stdout:
+                    print(f"STDOUT: {stdout[:500]}...")
+                if stderr:
+                    print(f"STDERR: {stderr[:500]}...")
+            except subprocess.TimeoutExpired:
+                p.kill()
+                results.append({
+                    'script': ' '.join(script_args),
+                    'stdout': '',
+                    'stderr': 'Script timed out after 15 minutes',
+                    'returncode': -1
+                })
+                print(f"Script timeout: {' '.join(script_args)}")
             except Exception as comm_ex:
                 results.append({
                     'script': ' '.join(script_args),
@@ -634,6 +666,7 @@ def run_all_scrapings():
                     'stderr': str(comm_ex),
                     'returncode': -1
                 })
+                print(f"Error en comunicación: {comm_ex}")
         # Guardar la fecha de última ejecución en la metadata
         from datetime import datetime
         user_meta['last_scraping_run'] = datetime.utcnow().isoformat()

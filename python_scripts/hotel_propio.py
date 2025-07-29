@@ -1,8 +1,6 @@
 import asyncio
 import os
 import re
-import subprocess
-import sys
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from supabase import create_client, Client, AsyncClient
@@ -10,57 +8,6 @@ from playwright.async_api import async_playwright
 import uuid
 import random
 import requests
-
-# Install Playwright browsers if not already installed
-def ensure_playwright_browsers():
-    try:
-        import playwright
-        print("Checking Playwright browser installation...")
-        
-        # Set environment variables for Playwright
-        os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/.cache/ms-playwright'
-        os.environ['PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD'] = '0'
-        
-        # Create cache directory if it doesn't exist
-        cache_dir = '/opt/render/project/src/.cache/ms-playwright'
-        os.makedirs(cache_dir, exist_ok=True)
-        
-        # Force install Chromium with dependencies
-        print("Installing Playwright browsers...")
-        result = subprocess.run([
-            sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"
-        ], capture_output=True, text=True, check=True)
-        
-        print("Playwright browsers installed successfully!")
-        print(f"Installation output: {result.stdout}")
-        
-        # Verify installation
-        verify_result = subprocess.run([
-            sys.executable, "-m", "playwright", "install", "--dry-run"
-        ], capture_output=True, text=True)
-        
-        if "No browsers are installed" in verify_result.stdout:
-            print("WARNING: Browsers still not found after installation")
-        else:
-            print("Browser installation verified successfully!")
-            
-    except subprocess.CalledProcessError as e:
-        print(f"Error installing Playwright browsers: {e}")
-        print(f"Error output: {e.stderr}")
-        # Try alternative installation method
-        try:
-            print("Trying alternative installation method...")
-            subprocess.run([
-                sys.executable, "-m", "playwright", "install", "chromium"
-            ], check=True)
-            print("Alternative installation successful!")
-        except Exception as alt_e:
-            print(f"Alternative installation also failed: {alt_e}")
-    except Exception as e:
-        print(f"Error ensuring Playwright browsers: {e}")
-
-# Ensure browsers are installed before importing playwright
-ensure_playwright_browsers()
 
 
 
@@ -113,37 +60,19 @@ def get_random_user_agent():
 
 async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN", headless_mode="false"):
     user_agent = get_random_user_agent()
-    # En Render, siempre usar headless mode para evitar errores
-    headless = True
-    
-    try:
-        async with async_playwright() as p:
-            # Try to launch browser with different options
-            browser = None
-            launch_options = [
-                {"headless": headless},
-                {"headless": headless, "args": ["--no-sandbox", "--disable-setuid-sandbox"]},
-                {"headless": headless, "args": ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]}
-            ]
-            
-            for i, options in enumerate(launch_options):
-                try:
-                    print(f"Attempting to launch browser with options {i+1}: {options}")
-                    browser = await p.chromium.launch(**options)
-                    print("Browser launched successfully!")
-                    break
-                except Exception as e:
-                    print(f"Launch attempt {i+1} failed: {e}")
-                    if i == len(launch_options) - 1:
-                        raise Exception(f"All browser launch attempts failed. Last error: {e}")
-                    continue
-            
-            if not browser:
-                raise Exception("Failed to launch browser with any configuration")
-            
-            # Create context and page
-            context = await browser.new_context()
-            page = await context.new_page()
+    # Convierte headless_mode a bool si es string
+    if isinstance(headless_mode, str):
+        if headless_mode.lower() == "false":
+            headless = False
+        else:
+            headless = True  # "true" o "new" o cualquier otro string
+    else:
+        headless = headless_mode
+    # Elimina el try sin except/finally
+    # try:
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=headless)
+        page = await browser.new_page()
         # Universal: set user-agent via extra headers
         await page.set_extra_http_headers({"user-agent": user_agent})
 
@@ -279,6 +208,8 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
             raise RuntimeError("No se encontró el enlace del hotel en los resultados.")
 
         # Justo antes de hacer clic en el enlace del hotel:
+        context = page.context
+
         # Prepara para capturar la nueva página
         new_page_promise = context.wait_for_event("page")
 
@@ -303,7 +234,6 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
             print("No se encontró la tabla de habitaciones")
             html = await page_to_scrape.content()
             print(html[:2000])
-            await context.close()
             await browser.close()
             popup_task.cancel()
             hotel_popup_task.cancel()
@@ -356,24 +286,10 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
                 else:
                     print(f"[No se encontró el selector #hprt-table para {checkin}]")
             results.append({"date": checkin, "rooms": day_rooms})
-        await context.close()
         await browser.close()
         popup_task.cancel()
         hotel_popup_task.cancel()
         return results
-    except Exception as e:
-        print(f"Error in scrape_booking_prices: {e}")
-        import traceback
-        traceback.print_exc()
-        # Try to close browser and context if they exist
-        try:
-            if 'context' in locals():
-                await context.close()
-            if 'browser' in locals():
-                await browser.close()
-        except:
-            pass
-        return []
    
                         # -----SUPABASE----- #
                         # -----SUPABASE----- #
@@ -413,7 +329,7 @@ async def insert_user_hotel_prices(user_id: str, hotel_name: str, results: list,
                 print("Error upserting:", data)
                 print("Exception:", e)
 
-async def main(user_id: str, hotel_name: str, headless_mode="true", jwt: str = ""):
+async def main(user_id: str, hotel_name: str, headless_mode="new", jwt: str = ""):
     prices = await scrape_booking_prices(hotel_name, headless_mode=headless_mode)
     print("Precios:", prices)
     await insert_user_hotel_prices(user_id, hotel_name, prices, jwt=jwt)
@@ -424,36 +340,19 @@ if __name__ == "__main__":
     import sys
     user_id = None
     hotel_name = None
-    headless_mode = "true"  # Default to true for Render
+    headless_mode = "new"
     jwt = ""
     args = sys.argv[1:]
-    
-    print(f"[DEBUG] Arguments received: {args}")
-    
     if len(args) >= 2:
         user_id = args[0]
         hotel_name = args[1]
-        
-        # Parse additional arguments
-        i = 2
-        while i < len(args):
-            if args[i] == "--headless" and i + 1 < len(args):
-                headless_mode = args[i + 1]
-                i += 2
-            elif args[i] == "--jwt" and i + 1 < len(args):
-                jwt = args[i + 1]
-                i += 2
-            else:
-                i += 1
-        
-        print(f"[DEBUG] Parsed arguments: user_id={user_id}, hotel_name={hotel_name}, headless_mode={headless_mode}, jwt={jwt}")
-        
-        try:
-            asyncio.run(main(user_id, hotel_name, headless_mode, jwt))
-        except Exception as e:
-            print(f"[ERROR] Failed to run main: {e}")
-            import traceback
-            traceback.print_exc()
+        # Buscar headless_mode y jwt en los argumentos
+        for i, arg in enumerate(args[2:]):
+            if arg == "--headless" and i+3 < len(args):
+                headless_mode = args[i+3]
+            if arg == "--jwt" and i+3 < len(args):
+                jwt = args[i+3]
+        asyncio.run(main(user_id, hotel_name, headless_mode, jwt))
     else:
         print("Modo API: ejecuta con 'uvicorn hotel_propio:app --reload'")
         print("Modo CLI: python hotel_propio.py <user_id> <hotel_name> [--headless <true|false|new>] [--jwt <token>]")

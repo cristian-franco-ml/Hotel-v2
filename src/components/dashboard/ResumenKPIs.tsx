@@ -35,41 +35,80 @@ const ResumenKPIs = () => {
     async function fetchKPIs() {
       setLoading(true);
       const today = getToday();
+      console.log('[DEBUG] Fetching KPIs for date:', today, 'user_id:', userId);
+      
       // Filtrar por user_id
-      const { data: allOwnPrices } = await supabase
+      const { data: allOwnPrices, error: allOwnError } = await supabase
         .from('hotel_usuario')
         .select('*')
         .eq('user_id', userId)
         .limit(5);
-      console.log('allOwnPrices sample', allOwnPrices);
+      
+      if (allOwnError) {
+        console.error('[DEBUG] Error fetching all own prices:', allOwnError);
+      }
+      console.log('[DEBUG] allOwnPrices sample', allOwnPrices);
+      
       // Fetch own hotel prices for today (usar checkin_date)
-      const { data: ownPrices } = await supabase
+      const { data: ownPrices, error: ownError } = await supabase
         .from('hotel_usuario')
         .select('*')
         .eq('checkin_date', today)
         .eq('user_id', userId);
-      console.log('ownPrices', ownPrices);
+      
+      if (ownError) {
+        console.error('[DEBUG] Error fetching own prices for today:', ownError);
+      }
+      console.log('[DEBUG] ownPrices for today', ownPrices);
+      
+      // If no data for today, try to get recent data
+      let ownPricesToUse = ownPrices;
+      if (!ownPrices || ownPrices.length === 0) {
+        console.log('[DEBUG] No data for today, fetching recent data');
+        const { data: recentPrices, error: recentError } = await supabase
+          .from('hotel_usuario')
+          .select('*')
+          .eq('user_id', userId)
+          .order('checkin_date', { ascending: false })
+          .limit(10);
+        
+        if (recentError) {
+          console.error('[DEBUG] Error fetching recent prices:', recentError);
+        }
+        console.log('[DEBUG] recentPrices', recentPrices);
+        ownPricesToUse = recentPrices;
+      }
+      
       // Fetch competitor hotels
-      const { data: competitorsRaw } = await supabase.from('hoteles_parallel').select('*');
+      const { data: competitorsRaw, error: competitorsError } = await supabase.from('hoteles_parallel').select('*');
+      
+      if (competitorsError) {
+        console.error('[DEBUG] Error fetching competitors:', competitorsError);
+      }
+      
       // Filtrar por ciudad si está definida en el usuario
       let competitors = competitorsRaw || [];
       if (userCity) {
         competitors = competitors.filter((hotel: any) =>
           hotel.ciudad && hotel.ciudad.toLowerCase() === userCity
         );
+        console.log('[DEBUG] Filtered competitors for city:', userCity, 'count:', competitors.length);
       }
+      
       // --- Tarifa Promedio (TDP) ---
       let tdp = 'N/A';
-      if (ownPrices && ownPrices.length > 0) {
-        const prices = ownPrices.map(row => parsePrice(row.price));
-        console.log('parsed prices', prices);
+      if (ownPricesToUse && ownPricesToUse.length > 0) {
+        const prices = ownPricesToUse.map(row => parsePrice(row.price));
+        console.log('[DEBUG] parsed prices', prices);
         const validPrices = prices.filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
         if (validPrices.length > 0) {
           tdp = (validPrices.reduce((a, b) => a + b, 0) / validPrices.length).toFixed(0);
         }
       }
+      
       // --- RevPAR (simplificado: promedio de precios, puedes ajustar si tienes ocupación) ---
       let revpar = tdp;
+      
       // --- RPI (RevPAR propio / competencia * 100) ---
       let rpi = 'N/A';
       let avgCompetencia = null;
@@ -93,15 +132,19 @@ const ResumenKPIs = () => {
           rpi = ((parseFloat(revpar) / avgCompetencia) * 100).toFixed(0);
         }
       }
+      
       // --- Cuota de Mercado (dummy, requiere ingresos totales mercado) ---
       let marketShare = 'N/A';
+      
       // --- Tasa de Ocupación (dummy, requiere datos reales) ---
       let ocupacion = 'N/A';
+      
       // --- Posición de Precios (ranking) ---
       let priceRank = 'N/A';
       if (tdp !== 'N/A' && avgCompetencia) {
         priceRank = parseFloat(tdp) > avgCompetencia ? 'Arriba Prom.' : 'Abajo Prom.';
       }
+      
       // --- Impacto de Eventos y Brecha Competitiva (dummy) ---
       setKpis({
         rpi,
@@ -116,7 +159,7 @@ const ResumenKPIs = () => {
       setLoading(false);
     }
     fetchKPIs();
-  }, []);
+  }, [userId, userCity]);
   return <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
       <KpiCard title="Índice de Rendimiento" bindKey="rpi" unidad="%" icon={<TrendingUp size={24} />} iconColor="text-green-500 dark:text-green-400" bgColor="bg-green-50 dark:bg-green-900/30" borderColor="border-green-500" formula="RPI = (RevPAR propio / RevPAR competencia) × 100" value={kpis.rpi} loading={loading} />
       <KpiCard title="Cuota de Mercado" bindKey="marketShare" unidad="%" icon={<Percent size={24} />} iconColor="text-blue-500 dark:text-blue-400" bgColor="bg-blue-50 dark:bg-blue-900/30" borderColor="border-blue-500" formula="Cuota = (Ingresos propios / Ingresos totales mercado) × 100" value={kpis.marketShare} loading={loading} />

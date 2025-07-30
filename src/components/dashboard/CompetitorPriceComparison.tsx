@@ -31,37 +31,74 @@ const CompetitorPriceComparison = () => {
     async function fetchData() {
       setLoading(true);
       const today = getToday();
+      console.log('[DEBUG] Fetching competitor data for date:', today, 'user_id:', userId);
+      
       // Filtrar por user_id o created_by según la tabla
       // Ejemplo usando user_id:
-      const { data: allOwnPrices } = await supabase
+      const { data: allOwnPrices, error: allOwnError } = await supabase
         .from('hotel_usuario')
         .select('*')
         .eq('user_id', userId)
         .limit(5);
+      
+      if (allOwnError) {
+        console.error('[DEBUG] Error fetching all own prices:', allOwnError);
+      }
+      
       // Fetch our hotel prices for today (usar checkin_date)
-      const { data: ownPrices } = await supabase
+      const { data: ownPrices, error: ownError } = await supabase
         .from('hotel_usuario')
         .select('hotel_name, price')
         .eq('checkin_date', today)
         .eq('user_id', userId);
+      
+      if (ownError) {
+        console.error('[DEBUG] Error fetching own prices for today:', ownError);
+      }
+      
+      // If no data for today, try to get recent data
+      let ownPricesToUse = ownPrices;
+      if (!ownPrices || ownPrices.length === 0) {
+        console.log('[DEBUG] No own prices for today, fetching recent data');
+        const { data: recentPrices, error: recentError } = await supabase
+          .from('hotel_usuario')
+          .select('hotel_name, price')
+          .eq('user_id', userId)
+          .order('checkin_date', { ascending: false })
+          .limit(5);
+        
+        if (recentError) {
+          console.error('[DEBUG] Error fetching recent own prices:', recentError);
+        }
+        ownPricesToUse = recentPrices;
+      }
+      
       // Fetch competitors
-      const { data: competitorsRaw } = await supabase.from('hoteles_parallel').select('*');
+      const { data: competitorsRaw, error: competitorsError } = await supabase.from('hoteles_parallel').select('*');
+      
+      if (competitorsError) {
+        console.error('[DEBUG] Error fetching competitors:', competitorsError);
+      }
+      
       // Filtrar por ciudad si está definida en el usuario
       let competitors = competitorsRaw || [];
       if (userCity) {
         competitors = competitors.filter((hotel: any) =>
           hotel.ciudad && hotel.ciudad.toLowerCase() === userCity
         );
+        console.log('[DEBUG] Filtered competitors for city:', userCity, 'count:', competitors.length);
       }
+      
       // Calculate our average price
       let ourAvg = null;
-      if (ownPrices && ownPrices.length > 0) {
-        const prices = ownPrices.map(row => parsePrice(row.price));
+      if (ownPricesToUse && ownPricesToUse.length > 0) {
+        const prices = ownPricesToUse.map(row => parsePrice(row.price));
         const validPrices = prices.filter(p => typeof p === 'number' && !isNaN(p) && p > 0);
         if (validPrices.length > 0) {
           ourAvg = validPrices.reduce((a, b) => a + b, 0) / validPrices.length;
         }
       }
+      
       // Prepare competitor rows
       const competitorRows = (competitors || []).map(hotel => {
         let avgPrice = null;
@@ -85,11 +122,12 @@ const CompetitorPriceComparison = () => {
           estrellas: hotel.estrellas || hotel.categoria || 0,
         };
       });
+      
       // Add our hotel as the first row
       setRows([
         {
           id: 'us',
-          name: ownPrices && ownPrices.length > 0 ? ownPrices[0].hotel_name : 'Nuestro Hotel',
+          name: ownPricesToUse && ownPricesToUse.length > 0 ? ownPricesToUse[0].hotel_name : 'Nuestro Hotel',
           price: ourAvg,
           isUs: true,
           estrellas: allOwnPrices && allOwnPrices.length > 0 ? (allOwnPrices[0].estrellas || allOwnPrices[0].categoria || 0) : 0,
@@ -99,7 +137,7 @@ const CompetitorPriceComparison = () => {
       setLoading(false);
     }
     fetchData();
-  }, []);
+  }, [userId, userCity]);
 
   const hasMore = rows.length > (MAX_COMPETITORS + 1); // +1 for 'us' row
   const visibleRows = showAll ? rows : rows.slice(0, MAX_COMPETITORS + 1); // +1 for 'us' row

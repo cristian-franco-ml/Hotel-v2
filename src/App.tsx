@@ -13,6 +13,7 @@ import MarketAnalysisPage from './components/MarketAnalysisPage';
 import OfflineBanner from './components/ui/OfflineBanner';
 import AuthForm from './components/AuthForm';
 import RegisterForm from './components/RegisterForm';
+import WelcomeScreen from './components/WelcomeScreen';
 import { supabase } from './supabaseClient';
 import { useEffect, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
@@ -21,13 +22,34 @@ import { Sun, Moon } from 'lucide-react';
 import { useTheme } from './contexts/ThemeContext';
 
 function AppRoutes() {
-  const { user, loading } = useUser();
+  const { user, loading, isNewUser, setHasSeenWelcome } = useUser();
   const { darkMode, toggleDarkMode } = useTheme();
   const location = useLocation();
+  const [showWelcome, setShowWelcome] = useState(false);
+
+  useEffect(() => {
+    if (user && isNewUser && !loading) {
+      setShowWelcome(true);
+    }
+  }, [user, isNewUser, loading]);
+
   if (loading) return null;
+
   const isAuthRoute = !user && (location.pathname === '/auth' || location.pathname === '/register' || location.pathname === '/');
-  // Centrado vertical para login/register
   const authContainerClass = isAuthRoute ? 'flex items-center justify-center min-h-screen' : '';
+
+  // Si es un usuario nuevo, mostrar la pantalla de bienvenida
+  if (showWelcome) {
+    return (
+      <WelcomeScreen 
+        onComplete={() => {
+          setHasSeenWelcome();
+          setShowWelcome(false);
+        }} 
+      />
+    );
+  }
+
   return (
     <>
       {isAuthRoute && (
@@ -65,9 +87,11 @@ export function App() {
       <LanguageProvider>
         <DateRangeProvider>
           <OverlayProvider>
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
+            <UserProvider>
+              <BrowserRouter>
+                <AppRoutes />
+              </BrowserRouter>
+            </UserProvider>
           </OverlayProvider>
         </DateRangeProvider>
       </LanguageProvider>

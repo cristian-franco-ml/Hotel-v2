@@ -12,7 +12,7 @@ import os
 def ensure_playwright_browsers():
     try:
         import playwright
-        print("Checking Playwright browser installation for Songkick scraping...")
+        print("Checking Playwright browser installation for Songkick scraping...", file=sys.stderr)
         
         # Set environment variables for Playwright
         os.environ['PLAYWRIGHT_BROWSERS_PATH'] = '/opt/render/project/src/.cache/ms-playwright'
@@ -23,15 +23,15 @@ def ensure_playwright_browsers():
         os.makedirs(cache_dir, exist_ok=True)
         
         # Force install Chromium with dependencies
-        print("Installing Playwright browsers for Songkick...")
+        print("Installing Playwright browsers for Songkick...", file=sys.stderr)
         result = subprocess.run([
             sys.executable, "-m", "playwright", "install", "--with-deps", "chromium"
         ], capture_output=True, text=True, check=True)
         
-        print("Playwright browsers installed successfully for Songkick!")
+        print("Playwright browsers installed successfully for Songkick!", file=sys.stderr)
         
     except Exception as e:
-        print(f"Error ensuring Playwright browsers for Songkick: {e}")
+        print(f"Error ensuring Playwright browsers for Songkick: {e}", file=sys.stderr)
 
 # Ensure browsers are installed before importing playwright
 ensure_playwright_browsers()
@@ -67,12 +67,12 @@ async def scrape_songkick_events():
             
             for i, options in enumerate(launch_options):
                 try:
-                    print(f"Attempting to launch browser for Songkick with options {i+1}: {options}")
+                    print(f"Attempting to launch browser for Songkick with options {i+1}: {options}", file=sys.stderr)
                     browser = await p.chromium.launch(**options)
-                    print("Browser launched successfully for Songkick!")
+                    print("Browser launched successfully for Songkick!", file=sys.stderr)
                     break
                 except Exception as e:
-                    print(f"Launch attempt {i+1} failed for Songkick: {e}")
+                    print(f"Launch attempt {i+1} failed for Songkick: {e}", file=sys.stderr)
                     if i == len(launch_options) - 1:
                         raise Exception(f"All browser launch attempts failed for Songkick. Last error: {e}")
                     continue
@@ -87,20 +87,20 @@ async def scrape_songkick_events():
                 "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
             })
 
-            print(f"Navigating to Songkick URL: {URL}")
+            print(f"Navigating to Songkick URL: {URL}", file=sys.stderr)
             await page.goto(URL)
             
             # Wait for events to load
             try:
                 await page.wait_for_selector("li.event-listings-element", timeout=30000)
-                print("Events found on Songkick page")
+                print("Events found on Songkick page", file=sys.stderr)
             except Exception as e:
-                print(f"Timeout waiting for events on Songkick: {e}")
+                print(f"Timeout waiting for events on Songkick: {e}", file=sys.stderr)
                 # Try to get the page content anyway
                 html = await page.content()
-                print(f"Page content length: {len(html)}")
+                print(f"Page content length: {len(html)}", file=sys.stderr)
                 if len(html) < 1000:
-                    print("Page seems to be empty or blocked")
+                    print("Page seems to be empty or blocked", file=sys.stderr)
                     await browser.close()
                     print(json.dumps([]))
                     return
@@ -109,7 +109,7 @@ async def scrape_songkick_events():
             await browser.close()
 
     except Exception as e:
-        print(f"Error in Playwright scraping for Songkick: {e}")
+        print(f"Error in Playwright scraping for Songkick: {e}", file=sys.stderr)
         print(json.dumps([]))
         return
 
@@ -117,7 +117,7 @@ async def scrape_songkick_events():
 
     # Buscar todos los eventos
     li_events = soup.find_all("li", class_="event-listings-element")
-    print(f"Found {len(li_events)} events on Songkick")
+    print(f"Found {len(li_events)} events on Songkick", file=sys.stderr)
     eventos = []
 
     for li in li_events:
@@ -174,11 +174,12 @@ async def scrape_songkick_events():
                 "distance_km": round(distance, 2)
             })
         except Exception as e:
-            print(f"Error processing event: {e}")
+            print(f"Error processing event: {e}", file=sys.stderr)
             continue
 
-    print(f"Final events count: {len(eventos)}")
-    print(json.dumps(eventos, ensure_ascii=False, indent=2))
+    print(f"Final events count: {len(eventos)}", file=sys.stderr)
+    # Solo imprimir el JSON en stdout, sin debug
+    print(json.dumps(eventos, ensure_ascii=False))
 
 # Run the async function
 if __name__ == "__main__":
@@ -191,3 +192,5 @@ if __name__ == "__main__":
     finally:
         sys.stdout.flush()
         sys.stderr.flush() 
+
+        

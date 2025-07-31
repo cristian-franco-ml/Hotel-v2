@@ -337,197 +337,234 @@ async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="MXN",
                 hotel_popup_task.cancel()
                 return []
 
-        # --- NUEVO: Scraping para los próximos 30 días, agrupado por día ---
+        # --- NUEVO: Scraping para los próximos 90 días con concurrencia ---
         results = []
         base_url = page_to_scrape.url  # URL de la página de detalle del hotel
         print(f"[DEBUG] URL base del hotel: {base_url}")
         
-        for offset in range(0, 30):
-            checkin = (today + timedelta(days=offset)).strftime("%Y-%m-%d")
-            checkout = (today + timedelta(days=offset+1)).strftime("%Y-%m-%d")
-            # Modifica la URL con las nuevas fechas
-            new_url = re.sub(r"checkin=\d{4}-\d{2}-\d{2}", f"checkin={checkin}", base_url)
-            new_url = re.sub(r"checkout=\d{4}-\d{2}-\d{2}", f"checkout={checkout}", new_url)
-            
-            print(f"[DEBUG] Procesando fecha {checkin} - URL: {new_url}")
-            
-            await page_to_scrape.goto(new_url)
-            await asyncio.sleep(3) # Aumentar espera entre fechas
-            
-            # Esperar a que la página cargue completamente
-            try:
-                await page_to_scrape.wait_for_load_state("networkidle", timeout=10000)
-            except Exception:
-                print(f"Timeout esperando carga completa para {checkin}, continuando...")
-            
-            # Intentar múltiples selectores para la tabla
-            table_found = False
-            for selector in table_selectors:
+        # Configurar concurrencia - procesar 5 fechas en paralelo
+        CONCURRENT_TASKS = 5
+        semaphore = asyncio.Semaphore(CONCURRENT_TASKS)
+        
+        # Configuración de timeouts optimizados
+        PAGE_LOAD_TIMEOUT = 10000  # 10 segundos
+        SELECTOR_TIMEOUT = 10000   # 10 segundos
+        SLEEP_BETWEEN_DATES = 3    # 3 segundos
+        
+        print(f"[DEBUG] Configuración de concurrencia: {CONCURRENT_TASKS} tareas simultáneas")
+        print(f"[DEBUG] Timeouts: carga={PAGE_LOAD_TIMEOUT}ms, selector={SELECTOR_TIMEOUT}ms")
+        print(f"[DEBUG] Sleep entre fechas: {SLEEP_BETWEEN_DATES}s")
+        
+        # Definir los rangos de fechas para las 3 páginas (como scrape_hotels_parallel)
+        date_ranges = [
+            (0, 30),   # Días 0-30
+            (31, 60),  # Días 31-60
+            (61, 90)   # Días 61-90
+        ]
+        
+        async def process_date_range(start_day: int, end_day: int):
+            """Procesa un rango de fechas en una página separada (como scrape_hotels_parallel)"""
+            async with semaphore:
+                print(f"[DEBUG] Iniciando procesamiento de rango {start_day}-{end_day} en página separada")
+                
+                # Crear una nueva página para este rango (como scrape_hotels_parallel)
+                range_page = await browser.new_page()
                 try:
-                    await page_to_scrape.wait_for_selector(selector, timeout=10000, state='visible')
-                    # Verificar que sea realmente una tabla de habitaciones
-                    element = await page_to_scrape.query_selector(selector)
-                    if element:
-                        tag_name = await element.evaluate('el => el.tagName.toLowerCase()')
-                        if tag_name == 'table':
-                            # Verificar que contenga información de habitaciones
-                            element_html = await element.inner_html()
-                            if any(keyword in element_html.lower() for keyword in ['room', 'habitación', 'suite', 'deluxe', 'king', 'queen']):
-                                print(f"Tabla encontrada para {checkin} con selector: {selector}")
-                                table_found = True
-                                break
-                except Exception:
-                    continue
-            
-            if not table_found:
-                print(f"No se encontró la tabla de habitaciones para {checkin}")
-                html = await page_to_scrape.content()
-                print(f"[HTML para {checkin}]:\n" + html[:2000])
-                continue
-            
-            # Mejorar la extracción de habitaciones con múltiples selectores
-            day_rooms = []
-            
-            # Intentar diferentes selectores para las filas de habitaciones
-            row_selectors = [
-                "#hprt-table tr",
-                "#hprt-table tbody tr",
-                ".hprt-table tr",
-                "table[data-et-view] tr"
-            ]
-            
-            rows = []
-            for selector in row_selectors:
-                try:
-                    rows = await page_to_scrape.query_selector_all(selector)
-                    if rows:
-                        print(f"Encontradas {len(rows)} filas con selector: {selector}")
-                        # Debug: mostrar el contenido de las primeras filas
-                        for i, row in enumerate(rows[:3]):
+                    # Configurar la página como en scrape_hotels_parallel
+                    await range_page.set_extra_http_headers({"user-agent": get_random_user_agent()})
+                    await range_page.add_init_script("""
+                        Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                    """)
+                    
+                    range_results = []
+                    
+                    # Procesar cada fecha en el rango secuencialmente en esta página
+                    for offset in range(start_day, end_day + 1):
+                        checkin = (today + timedelta(days=offset)).strftime("%Y-%m-%d")
+                        checkout = (today + timedelta(days=offset+1)).strftime("%Y-%m-%d")
+                        
+                        # Modifica la URL con las nuevas fechas
+                        new_url = re.sub(r"checkin=\d{4}-\d{2}-\d{2}", f"checkin={checkin}", base_url)
+                        new_url = re.sub(r"checkout=\d{4}-\d{2}-\d{2}", f"checkout={checkout}", new_url)
+                        
+                        print(f"[DEBUG] Procesando fecha {checkin} en rango {start_day}-{end_day}")
+                        
+                        try:
+                            await range_page.goto(new_url)
+                            await asyncio.sleep(SLEEP_BETWEEN_DATES)
+                            
+                            # Esperar a que la página cargue completamente
                             try:
-                                row_text = await row.inner_text()
-                                print(f"  Fila {i+1}: {row_text[:200]}...")
-                            except Exception as e:
-                                print(f"  Error leyendo fila {i+1}: {e}")
-                        break
-                except Exception:
-                    continue
-            
-            if not rows:
-                print(f"No se encontraron filas de habitaciones para {checkin}")
-                # Intentar buscar cualquier elemento que contenga información de habitaciones
-                try:
-                    all_elements = await page_to_scrape.query_selector_all("*")
-                    room_elements = []
-                    for elem in all_elements:
-                        try:
-                            elem_text = await elem.inner_text()
-                            if any(keyword in elem_text.lower() for keyword in ['room', 'habitación', 'suite', 'deluxe', 'king', 'queen']):
-                                room_elements.append(elem_text[:100])  # Primeros 100 caracteres
-                        except Exception:
-                            continue
-                    
-                    if room_elements:
-                        print(f"Elementos con información de habitaciones encontrados para {checkin}:")
-                        for i, elem in enumerate(room_elements[:5]):  # Solo mostrar los primeros 5
-                            print(f"  {i+1}. {elem}")
-                except Exception as e:
-                    print(f"Error buscando elementos de habitaciones: {e}")
-                continue
-            
-            for row in rows:
-                try:
-                    # Intentar múltiples selectores para el tipo de habitación
-                    room_type_selectors = [
-                        "th span.hprt-roomtype-icon-link",
-                        "th .hprt-roomtype-icon-link",
-                        "th .hprt-roomtype",
-                        "th span",
-                        "th"
-                    ]
-                    
-                    room_type_el = None
-                    room_text = None
-                    
-                    for room_selector in room_type_selectors:
-                        try:
-                            room_type_el = await row.query_selector(room_selector)
-                            if room_type_el:
-                                room_text = (await room_type_el.inner_text()).strip()
-                                if room_text and len(room_text) > 5:  # Asegurar que no esté vacío
-                                    break
-                        except Exception:
-                            continue
-                    
-                    if not room_text:
-                        continue
-                    
-                    # Buscar precio en todas las celdas de la fila
-                    price_text = None
-                    tds = await row.query_selector_all("td")
-                    
-                    for td in tds:
-                        try:
-                            td_text = await td.inner_text()
-                            # Buscar diferentes formatos de precio
-                            price_patterns = [
-                                r'(MXN\s*\$?|\$)\s*[\d,.]+',
-                                r'[\d,.]+\s*(MXN|\$)',
-                                r'\$[\d,.]+',
-                                r'MXN\s*[\d,.]+',
-                                r'[\d,]+\.?\d*\s*(MXN|\$)',
-                                r'(MXN|\$)\s*[\d,]+\.?\d*'
+                                await range_page.wait_for_load_state("networkidle", timeout=PAGE_LOAD_TIMEOUT)
+                            except Exception:
+                                print(f"Timeout esperando carga completa para {checkin}, continuando...")
+                            
+                            # Intentar múltiples selectores para la tabla
+                            table_found = False
+                            for selector in table_selectors:
+                                try:
+                                    await range_page.wait_for_selector(selector, timeout=SELECTOR_TIMEOUT, state='visible')
+                                    # Verificar que sea realmente una tabla de habitaciones
+                                    element = await range_page.query_selector(selector)
+                                    if element:
+                                        tag_name = await element.evaluate('el => el.tagName.toLowerCase()')
+                                        if tag_name == 'table':
+                                            # Verificar que contenga información de habitaciones
+                                            element_html = await element.inner_html()
+                                            if any(keyword in element_html.lower() for keyword in ['room', 'habitación', 'suite', 'deluxe', 'king', 'queen']):
+                                                print(f"Tabla encontrada para {checkin} con selector: {selector}")
+                                                table_found = True
+                                                break
+                                except Exception:
+                                    continue
+                            
+                            if not table_found:
+                                print(f"No se encontró la tabla de habitaciones para {checkin}")
+                                range_results.append({"date": checkin, "rooms": []})
+                                continue
+                            
+                            # Mejorar la extracción de habitaciones con múltiples selectores
+                            day_rooms = []
+                            
+                            # Intentar diferentes selectores para las filas de habitaciones
+                            row_selectors = [
+                                "#hprt-table tr",
+                                "#hprt-table tbody tr",
+                                ".hprt-table tr",
+                                "table[data-et-view] tr"
                             ]
                             
-                            for pattern in price_patterns:
-                                match = re.search(pattern, td_text, re.IGNORECASE)
-                                if match:
-                                    price_text = match.group(0).strip()
-                                    break
+                            rows = []
+                            for selector in row_selectors:
+                                try:
+                                    rows = await range_page.query_selector_all(selector)
+                                    if rows:
+                                        print(f"Encontradas {len(rows)} filas con selector: {selector}")
+                                        break
+                                except Exception:
+                                    continue
                             
-                            if price_text:
-                                break
-                        except Exception:
-                            continue
+                            if not rows:
+                                print(f"No se encontraron filas de habitaciones para {checkin}")
+                                range_results.append({"date": checkin, "rooms": []})
+                                continue
+                            
+                            for row in rows:
+                                try:
+                                    # Intentar múltiples selectores para el tipo de habitación
+                                    room_type_selectors = [
+                                        "th span.hprt-roomtype-icon-link",
+                                        "th .hprt-roomtype-icon-link",
+                                        "th .hprt-roomtype",
+                                        "th span",
+                                        "th"
+                                    ]
+                                    
+                                    room_type_el = None
+                                    room_text = None
+                                    
+                                    for room_selector in room_type_selectors:
+                                        try:
+                                            room_type_el = await row.query_selector(room_selector)
+                                            if room_type_el:
+                                                room_text = (await room_type_el.inner_text()).strip()
+                                                if room_text and len(room_text) > 5:  # Asegurar que no esté vacío
+                                                    break
+                                        except Exception:
+                                            continue
+                                    
+                                    if not room_text:
+                                        continue
+                                    
+                                    # Buscar precio en todas las celdas de la fila
+                                    price_text = None
+                                    tds = await row.query_selector_all("td")
+                                    
+                                    for td in tds:
+                                        try:
+                                            td_text = await td.inner_text()
+                                            # Buscar diferentes formatos de precio
+                                            price_patterns = [
+                                                r'(MXN\s*\$?|\$)\s*[\d,.]+',
+                                                r'[\d,.]+\s*(MXN|\$)',
+                                                r'\$[\d,.]+',
+                                                r'MXN\s*[\d,.]+',
+                                                r'[\d,]+\.?\d*\s*(MXN|\$)',
+                                                r'(MXN|\$)\s*[\d,]+\.?\d*'
+                                            ]
+                                            
+                                            for pattern in price_patterns:
+                                                match = re.search(pattern, td_text, re.IGNORECASE)
+                                                if match:
+                                                    price_text = match.group(0).strip()
+                                                    break
+                                            
+                                            if price_text:
+                                                break
+                                        except Exception:
+                                            continue
+                                    
+                                    if room_text and price_text:
+                                        # Verificar que no sea un duplicado en el mismo día
+                                        is_duplicate = False
+                                        for existing_room in day_rooms:
+                                            if existing_room["room_type"] == room_text and existing_room["price"] == price_text:
+                                                is_duplicate = True
+                                                break
+                                        
+                                        if not is_duplicate:
+                                            day_rooms.append({"room_type": room_text, "price": price_text})
+                                            print(f"Habitación encontrada para {checkin}: {room_text} - {price_text}")
+                                
+                                except Exception as e:
+                                    print(f"Error procesando fila para {checkin}: {e}")
+                                    continue
+                            
+                            if not day_rooms:
+                                print(f"No se encontraron habitaciones para {checkin}")
+                            else:
+                                print(f"Total de habitaciones encontradas para {checkin}: {len(day_rooms)}")
+                            
+                            range_results.append({"date": checkin, "rooms": day_rooms})
+                            
+                        except Exception as e:
+                            print(f"Error procesando fecha {checkin}: {e}")
+                            range_results.append({"date": checkin, "rooms": []})
                     
-                    if room_text and price_text:
-                        # Verificar que no sea un duplicado en el mismo día
-                        is_duplicate = False
-                        for existing_room in day_rooms:
-                            if existing_room["room_type"] == room_text and existing_room["price"] == price_text:
-                                is_duplicate = True
-                                break
-                        
-                        if not is_duplicate:
-                            day_rooms.append({"room_type": room_text, "price": price_text})
-                            print(f"Habitación encontrada para {checkin}: {room_text} - {price_text}")
-                
+                    print(f"[DEBUG] Rango {start_day}-{end_day} completado. {len(range_results)} días procesados")
+                    return range_results
+                    
                 except Exception as e:
-                    print(f"Error procesando fila para {checkin}: {e}")
-                    continue
-            
-            if not day_rooms:
-                # Si no se encontraron cuartos, imprime el HTML de la tabla
-                table = await page_to_scrape.query_selector("#hprt-table")
-                if table:
-                    table_html = await table.inner_html()
-                    print(f"[Tabla vacía para {checkin}]:\n" + table_html[:2000])
-                    
-                    # Debug adicional: buscar cualquier texto que contenga "room" o "habitación"
-                    try:
-                        all_text = await table.inner_text()
-                        room_keywords = ["room", "habitación", "suite", "deluxe", "standard", "king", "queen", "twin"]
-                        for keyword in room_keywords:
-                            if keyword.lower() in all_text.lower():
-                                print(f"  Encontrada palabra clave '{keyword}' en la tabla")
-                    except Exception as e:
-                        print(f"  Error al analizar texto de tabla: {e}")
-                else:
-                    print(f"[No se encontró el selector #hprt-table para {checkin}]")
-            else:
-                print(f"Total de habitaciones encontradas para {checkin}: {len(day_rooms)}")
-            
-            results.append({"date": checkin, "rooms": day_rooms})
+                    print(f"Error procesando rango {start_day}-{end_day}: {e}")
+                    return []
+                finally:
+                    await range_page.close()
+        
+        # Crear tareas concurrentes para los 3 rangos (como scrape_hotels_parallel)
+        range_tasks = []
+        for start_day, end_day in date_ranges:
+            print(f"[DEBUG] Preparando tarea para rango de días {start_day}-{end_day}")
+            range_tasks.append(process_date_range(start_day, end_day))
+        
+        # Ejecutar las 3 páginas concurrentemente (como scrape_hotels_parallel)
+        print(f"[DEBUG] Iniciando procesamiento concurrente de 3 páginas simultáneamente")
+        print(f"[DEBUG] Total de rangos: {len(range_tasks)} (3 páginas)")
+        print(f"[DEBUG] Concurrencia: {CONCURRENT_TASKS} tareas simultáneas")
+        
+        all_results = await asyncio.gather(*range_tasks, return_exceptions=True)
+        
+        # Combinar resultados de todas las páginas
+        valid_results = []
+        for result in all_results:
+            if isinstance(result, list):
+                valid_results.extend(result)
+            elif isinstance(result, Exception):
+                print(f"Error en rango concurrente: {result}")
+        
+        print(f"[DEBUG] Procesamiento completado. {len(valid_results)} días procesados exitosamente en total")
+        
+        # Asignar los resultados válidos
+        results = valid_results
         await browser.close()
         popup_task.cancel()
         hotel_popup_task.cancel()

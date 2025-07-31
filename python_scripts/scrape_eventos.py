@@ -50,7 +50,7 @@ print(f"UUID de usuario: {user_uuid}")
 
 # Parámetros fijos para Ticketmaster
 DIAS = 90
-LIMITE = 20
+LIMITE = 40
 TIPO_EVENTO = "concert"
 
 fetcher = EventsFetcher(api_key=API_KEY)

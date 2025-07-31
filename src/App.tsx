@@ -9,6 +9,7 @@ import HotelsPage from './components/HotelsPage';
 import PerformancePage from './components/PerformancePage';
 import StrategiesPage from './components/StrategiesPage';
 import PreciosPage from './components/PreciosPage';
+import CalendarPage from './components/CalendarPage';
 import MarketAnalysisPage from './components/MarketAnalysisPage';
 import OfflineBanner from './components/ui/OfflineBanner';
 import AuthForm from './components/AuthForm';
@@ -75,6 +76,7 @@ function AppRoutes() {
           <Route path="/rendimiento" element={<PerformancePage />} />
           <Route path="/estrategias" element={<StrategiesPage />} />
           <Route path="/precios" element={<PreciosPage />} />
+          <Route path="/calendario" element={<CalendarPage />} />
           <Route path="/mercado" element={<MarketAnalysisPage />} />
         </Routes>
       </div>

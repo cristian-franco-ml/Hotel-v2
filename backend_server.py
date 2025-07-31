@@ -157,7 +157,7 @@ def get_events():
     print('[DEBUG] /api/events user_id recibido:', user_id)
     if not user_id:
         return jsonify({'error': 'user_id requerido'}), 400
-    url = f'{SUPABASE_URL}/rest/v1/events?user_id=eq.{user_id}&order=created_at.desc'
+    url = f'{SUPABASE_URL}/rest/v1/events?created_by=eq.{user_id}&order=created_at.desc'
     print('[DEBUG] URL consulta Supabase:', url)
     response = requests.get(
         url,
@@ -196,7 +196,7 @@ def create_event():
             'nombre': nombre,
             'fecha': fecha,
             'lugar': lugar,
-            'user_id': user_id
+            'created_by': user_id
             # ...agrega los campos que uses...
         }
     )
@@ -310,6 +310,70 @@ def get_events_local():
         return jsonify({'mx': mx, 'us': us})
     except Exception as e:
         return jsonify({'mx': [], 'us': [], 'error': str(e)}), 500
+
+@app.route('/api/hotel-prices', methods=['GET'])
+def get_hotel_prices():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({'error': 'user_id requerido'}), 400
+    
+    # Validar formato de UUID
+    import re
+    uuid_pattern = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.IGNORECASE)
+    if not uuid_pattern.match(user_id):
+        return jsonify({'error': 'user_id debe ser un UUID válido'}), 400
+    
+    try:
+        # Obtener precios del hotel del usuario
+        url = f'{SUPABASE_URL}/rest/v1/hotel_usuario?user_id=eq.{user_id}&order=checkin_date.asc'
+        print(f'[DEBUG] Consultando URL: {url}')
+        response = requests.get(
+            url,
+            headers={
+                'apikey': SUPABASE_KEY,
+                'Authorization': f'Bearer {SUPABASE_KEY}'
+            }
+        )
+        
+        print(f'[DEBUG] Status code: {response.status_code}')
+        print(f'[DEBUG] Response: {response.text[:500]}')
+        
+        if response.status_code == 200:
+            prices = response.json()
+            
+            # Calcular precio promedio
+            if prices:
+                # Convertir precios de string a float, removiendo "MXN " y comas
+                price_values = []
+                for price in prices:
+                    try:
+                        price_str = str(price.get('price', '0'))
+                        # Remover "MXN " y comas, convertir a float
+                        price_clean = price_str.replace('MXN ', '').replace(',', '')
+                        price_float = float(price_clean)
+                        price_values.append(price_float)
+                    except (ValueError, TypeError):
+                        print(f'[DEBUG] Error parsing price: {price.get("price")}')
+                        continue
+                
+                if price_values:
+                    average_price = sum(price_values) / len(price_values)
+                else:
+                    average_price = 0
+            else:
+                average_price = 0
+            
+            return jsonify({
+                'prices': prices,
+                'average_price': average_price,
+                'total_records': len(prices)
+            })
+        else:
+            return jsonify({'error': f'Supabase error: {response.status_code}', 'details': response.text}), response.status_code
+            
+    except Exception as e:
+        print(f'Error getting hotel prices: {e}')
+        return jsonify({'error': str(e)}), 500
 
 async def scrape_booking_prices(hotel_name: str, locale="en-us", currency="USD"):
     async with async_playwright() as p:
@@ -572,6 +636,13 @@ def set_scraping_period():
 @app.route('/run-all-scrapings', methods=['POST'])
 def run_all_scrapings():
     import traceback
+    from datetime import datetime
+    
+    # Debug logs para registrar inicio del proceso
+    start_time = datetime.now()
+    print("=" * 60)
+    print(f"[DEBUG] SCRAPING PROCESS STARTED at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 60)
     print("=== /run-all-scrapings endpoint called ===")
     print("Request method:", request.method)
     print("Request headers:", dict(request.headers))
@@ -602,7 +673,7 @@ def run_all_scrapings():
         phone = user_meta.get('Phone') or user_meta.get('phone') or ''
         # Ejecutar los scripts como antes...
         scripts = [
-            ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name, '--headless', 'true'],
+            ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name, '--headless', 'new'],
             ['python', 'python_scripts/scrape_eventos.py', hotel_name, '10', user_id]
         ]
         processes = []
@@ -637,7 +708,7 @@ def run_all_scrapings():
                 })
                 continue
             try:
-                stdout, stderr = p.communicate(timeout=900)  # 15 minutos de timeout para hoteles
+                stdout, stderr = p.communicate(timeout=2700)  # 45 minutos de timeout para hoteles
                 results.append({
                     'script': ' '.join(script_args),
                     'stdout': stdout,
@@ -668,14 +739,32 @@ def run_all_scrapings():
                 })
                 print(f"Error en comunicación: {comm_ex}")
         # Guardar la fecha de última ejecución en la metadata
-        from datetime import datetime
         user_meta['last_scraping_run'] = datetime.utcnow().isoformat()
         patch_resp = requests.put(user_url, headers={**headers, 'Content-Type': 'application/json'}, json={"user_metadata": user_meta})
         # No importa si falla, solo loguear
         if patch_resp.status_code != 200:
             print('No se pudo actualizar last_scraping_run:', patch_resp.text)
+        
+        # Debug logs para registrar fin del proceso
+        end_time = datetime.now()
+        duration = end_time - start_time
+        print("=" * 60)
+        print(f"[DEBUG] SCRAPING PROCESS COMPLETED at {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"[DEBUG] TOTAL DURATION: {duration}")
+        print(f"[DEBUG] Duration in seconds: {duration.total_seconds():.2f}")
+        print("=" * 60)
+        
         return jsonify({'results': results})
     except Exception as ex:
+        # Debug logs para registrar error del proceso
+        end_time = datetime.now()
+        duration = end_time - start_time
+        print("=" * 60)
+        print(f"[DEBUG] SCRAPING PROCESS FAILED at {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"[DEBUG] DURATION BEFORE ERROR: {duration}")
+        print(f"[DEBUG] Duration in seconds: {duration.total_seconds():.2f}")
+        print(f"[DEBUG] ERROR: {ex}")
+        print("=" * 60)
         print('General Exception:', ex)
         return jsonify({'error': str(ex)}), 500
 

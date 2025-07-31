@@ -167,6 +167,9 @@ const Navigation = () => {
             <NavItem to="/precios" active={currentPath === '/precios'}>
               {t('prices')}
             </NavItem>
+            <NavItem to="/calendario" active={currentPath === '/calendario'}>
+              {t('calendar')}
+            </NavItem>
             <NavItem to="/rendimiento" active={currentPath === '/rendimiento'}>
               {t('performance')}
             </NavItem>

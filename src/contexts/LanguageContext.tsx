@@ -12,6 +12,7 @@ const translations = {
     hotels: 'Hotels',
     strategies: 'Strategies',
     prices: 'Prices',
+    calendar: 'Calendar',
     performance: 'Performance',
     market: 'Market & Analysis',
     // Dashboard
@@ -237,6 +238,7 @@ const translations = {
     hotels: 'Hoteles',
     strategies: 'Estrategias',
     prices: 'Precios',
+    calendar: 'Calendario',
     performance: 'Rendimiento',
     market: 'Mercado & Análisis',
     // Dashboard

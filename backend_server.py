@@ -297,18 +297,37 @@ def health_check():
 def get_events_local():
     """Fetch events from local eventos_cercanos.json (MX + US juntos)"""
     try:
+        print('[DEBUG] /api/events-local endpoint called')
         filename = os.path.join('resultados', 'eventos_cercanos.json')
+        print(f'[DEBUG] Looking for file: {filename}')
+        
         if not os.path.exists(filename):
+            print(f'[DEBUG] File not found: {filename}')
             return jsonify({'mx': [], 'us': []})
+        
+        print(f'[DEBUG] File exists, reading...')
         with open(filename, 'r', encoding='utf-8') as f:
             try:
                 data = json.load(f)
-            except Exception:
+                print(f'[DEBUG] JSON loaded successfully, keys: {list(data.keys())}')
+            except Exception as e:
+                print(f'[DEBUG] Error parsing JSON: {e}')
                 data = {}
+        
         mx = data.get('mx', [])
         us = data.get('us', [])
-        return jsonify({'mx': mx, 'us': us})
+        
+        print(f'[DEBUG] MX events: {len(mx)}, US events: {len(us)}')
+        if mx:
+            print(f'[DEBUG] Sample MX event: {mx[0]}')
+        if us:
+            print(f'[DEBUG] Sample US event: {us[0]}')
+        
+        result = {'mx': mx, 'us': us}
+        print(f'[DEBUG] Returning result with {len(mx) + len(us)} total events')
+        return jsonify(result)
     except Exception as e:
+        print(f'[DEBUG] Exception in get_events_local: {e}')
         return jsonify({'mx': [], 'us': [], 'error': str(e)}), 500
 
 @app.route('/api/hotel-prices', methods=['GET'])
@@ -340,33 +359,81 @@ def get_hotel_prices():
         
         if response.status_code == 200:
             prices = response.json()
+            print(f'[DEBUG] Precios obtenidos: {len(prices)} registros')
             
             # Calcular precio promedio
             if prices:
                 # Convertir precios de string a float, removiendo "MXN " y comas
                 price_values = []
+                processed_prices = []
+                
                 for price in prices:
                     try:
                         price_str = str(price.get('price', '0'))
-                        # Remover "MXN " y comas, convertir a float
-                        price_clean = price_str.replace('MXN ', '').replace(',', '')
+                        print(f'[DEBUG] Precio original: "{price_str}"')
+                        
+                        # Limpiar el precio de varios formatos
+                        price_clean = price_str
+                        
+                        # Remover prefijos de moneda
+                        price_clean = price_clean.replace('MXN ', '').replace('USD ', '').replace('$', '')
+                        
+                        # Remover comas y espacios
+                        price_clean = price_clean.replace(',', '').replace(' ', '').strip()
+                        
+                        # Remover caracteres no numéricos excepto punto decimal
+                        import re
+                        price_clean = re.sub(r'[^\d.]', '', price_clean)
+                        
+                        # Asegurar que solo hay un punto decimal
+                        if price_clean.count('.') > 1:
+                            parts = price_clean.split('.')
+                            price_clean = parts[0] + '.' + ''.join(parts[1:])
+                        
+                        print(f'[DEBUG] Precio limpio: "{price_clean}"')
+                        
+                        if not price_clean or price_clean == '.':
+                            print(f'[DEBUG] Precio vacío después de limpieza: {price_str}')
+                            continue
+                            
                         price_float = float(price_clean)
+                        
+                        if price_float <= 0:
+                            print(f'[DEBUG] Precio inválido (<= 0): {price_float}')
+                            continue
+                            
                         price_values.append(price_float)
-                    except (ValueError, TypeError):
-                        print(f'[DEBUG] Error parsing price: {price.get("price")}')
+                        
+                        # Crear objeto procesado con precio numérico
+                        processed_price = {
+                            'id': price.get('id'),
+                            'checkin_date': price.get('checkin_date'),
+                            'room_type': price.get('room_type'),
+                            'price': price_float,  # Usar precio numérico
+                            'scrape_date': price.get('scrape_date')
+                        }
+                        processed_prices.append(processed_price)
+                        print(f'[DEBUG] Precio procesado exitosamente: {price_float}')
+                        
+                    except (ValueError, TypeError) as e:
+                        print(f'[DEBUG] Error parsing price: "{price.get("price")}" - Error: {e}')
                         continue
                 
                 if price_values:
                     average_price = sum(price_values) / len(price_values)
+                    print(f'[DEBUG] Precio promedio calculado: {average_price}')
                 else:
                     average_price = 0
+                    print('[DEBUG] No se pudieron procesar precios válidos')
             else:
                 average_price = 0
+                processed_prices = []
+                print('[DEBUG] No hay precios disponibles')
             
             return jsonify({
-                'prices': prices,
+                'prices': processed_prices,  # Usar precios procesados
                 'average_price': average_price,
-                'total_records': len(prices)
+                'total_records': len(processed_prices)
             })
         else:
             return jsonify({'error': f'Supabase error: {response.status_code}', 'details': response.text}), response.status_code
@@ -673,7 +740,7 @@ def run_all_scrapings():
         phone = user_meta.get('Phone') or user_meta.get('phone') or ''
         # Ejecutar los scripts como antes...
         scripts = [
-            ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name, '--headless', 'new'],
+            ['python', 'python_scripts/hotel_propio.py', user_id, hotel_name, '--headless', 'true'],
             ['python', 'python_scripts/scrape_eventos.py', hotel_name, '10', user_id]
         ]
         processes = []
@@ -708,7 +775,16 @@ def run_all_scrapings():
                 })
                 continue
             try:
-                stdout, stderr = p.communicate(timeout=2700)  # 45 minutos de timeout para hoteles
+                # Timeout diferenciado por tipo de script
+                script_name = ' '.join(script_args)
+                if 'hotel_propio.py' in script_name:
+                    timeout = 2700  # 45 minutos para hoteles
+                elif 'scrape_eventos.py' in script_name:
+                    timeout = 600   # 10 minutos para eventos
+                else:
+                    timeout = 1800  # 30 minutos por defecto
+                
+                stdout, stderr = p.communicate(timeout=timeout)
                 results.append({
                     'script': ' '.join(script_args),
                     'stdout': stdout,
@@ -723,10 +799,18 @@ def run_all_scrapings():
                     print(f"STDERR: {stderr[:500]}...")
             except subprocess.TimeoutExpired:
                 p.kill()
+                script_name = ' '.join(script_args)
+                if 'hotel_propio.py' in script_name:
+                    timeout_msg = 'Script de hoteles timed out after 45 minutes'
+                elif 'scrape_eventos.py' in script_name:
+                    timeout_msg = 'Script de eventos timed out after 10 minutes'
+                else:
+                    timeout_msg = 'Script timed out after 30 minutes'
+                
                 results.append({
                     'script': ' '.join(script_args),
                     'stdout': '',
-                    'stderr': 'Script timed out after 15 minutes',
+                    'stderr': timeout_msg,
                     'returncode': -1
                 })
                 print(f"Script timeout: {' '.join(script_args)}")
@@ -740,10 +824,19 @@ def run_all_scrapings():
                 print(f"Error en comunicación: {comm_ex}")
         # Guardar la fecha de última ejecución en la metadata
         user_meta['last_scraping_run'] = datetime.utcnow().isoformat()
-        patch_resp = requests.put(user_url, headers={**headers, 'Content-Type': 'application/json'}, json={"user_metadata": user_meta})
-        # No importa si falla, solo loguear
-        if patch_resp.status_code != 200:
-            print('No se pudo actualizar last_scraping_run:', patch_resp.text)
+        try:
+            patch_resp = requests.put(user_url, headers={**headers, 'Content-Type': 'application/json'}, json={"user_metadata": user_meta})
+            if patch_resp.status_code != 200:
+                print('No se pudo actualizar last_scraping_run:', patch_resp.text)
+        except Exception as e:
+            print(f'Error actualizando last_scraping_run: {e}')
+        
+        # Verificar si al menos un script se ejecutó exitosamente
+        successful_scripts = [r for r in results if r['returncode'] == 0]
+        if not successful_scripts:
+            print("ADVERTENCIA: Ningún script se ejecutó exitosamente")
+        else:
+            print(f"Éxito: {len(successful_scripts)} de {len(results)} scripts completados")
         
         # Debug logs para registrar fin del proceso
         end_time = datetime.now()

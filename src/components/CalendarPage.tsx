@@ -988,4 +988,4 @@ const CalendarPage: React.FC = () => {
   );
 };
 
-export default CalendarPage; 
+export default CalendarPage
